@@ -20,7 +20,7 @@ def read(p):
 def walk(root):
     out = []
     for dp, _, fs in os.walk(root):
-        if "_history" in dp or "_archive" in dp or "node_modules" in dp:
+        if any(x in dp for x in ("_history", "_archive", "node_modules", ".git")):
             continue
         for f in fs:
             out.append(os.path.join(dp, f))
