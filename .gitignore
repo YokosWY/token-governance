@@ -19,3 +19,6 @@ tmp/
 # 宣传物 QA 产物
 promo/preview*/
 promo/checks.json
+
+# 本机私有资料（不发布）
+_local/

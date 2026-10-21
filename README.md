@@ -267,32 +267,7 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 
 ---
 
-## 13. 发布前检查
-
-```bash
-# 1) 自检，0 高优先问题才继续
-python scripts/audit_pack.py
-
-# 2) 确认没有本机路径、用户名、密钥
-grep -rnE "sk-[A-Za-z0-9]{10,}|/Users/|/home/[a-z]+" . --include="*.md" --include="*.py" --include="*.yaml" | grep -v CHANGELOG
-
-# 3) 确认不想提交的东西已被忽略
-git status --short
-```
-
-| 项 | 处理 |
-|---|---|
-| `config.yaml`（含本机路径） | 已进 `.gitignore` |
-| `_history/`、`*.bak-*` | 已忽略 |
-| `skills/*/docs`（本地挂载） | 已忽略 |
-| `promo/preview*/`（QA 产物） | 已忽略 |
-| 密钥 | 包内没有；示例配置只有价格 |
-
-推送前若目录里有 `security/check_secrets.py`，先跑 `--staged`，退出码必须是 0。
-
----
-
-## 14. 参考文档
+## 13. 参考文档
 
 词条解释集中在 `docs/glossary.md`，这里只列文档分工。
 
