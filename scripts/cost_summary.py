@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Token-Governance 体检：只读 ledger，输出 N 天的花费与结构。
+
+用法:
+  python cost_summary.py --config config.yaml [--days 7] [--json]
+配置里至少要有 dsh_home（或 dsh_homes 列表）。
+"""
+import argparse, json, os, sys, datetime
+
+def load_yaml(path):
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("需要 pyyaml：pip install pyyaml")
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+def expand(p):
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+def read_ledger(home):
+    p = os.path.join(home, "storages", "cost-meter", "ledger.json")
+    if not os.path.isfile(p):
+        return None, p
+    with open(p, encoding="utf-8") as f:
+        return json.load(f), p
+
+def summarize(days, n):
+    keys = sorted(days)[-n:]
+    rows, tok = [], {"input": 0, "cacheRead": 0, "cacheWrite": 0, "output": 0, "calls": 0, "cny": 0.0}
+    models = {}
+    for k in keys:
+        d = days[k]
+        cny = float(d.get("costCny") or 0.0)
+        rows.append({
+            "date": k,
+            "cny": round(cny, 2),
+            "calls": int(d.get("calls") or 0),
+            "input": int(d.get("input") or 0),
+            "cacheRead": int(d.get("cacheRead") or 0),
+            "output": int(d.get("output") or 0),
+        })
+        for f in ("input", "cacheRead", "cacheWrite", "output", "calls"):
+            tok[f] += int(d.get(f) or 0)
+        tok["cny"] += cny
+        for m, v in (d.get("byProviderModel") or {}).items():
+            slot = models.setdefault(m, {"calls": 0, "tokens": 0})
+            slot["calls"] += int(v.get("calls") or 0)
+            slot["tokens"] += sum(int(v.get(f) or 0) for f in ("input", "cacheRead", "cacheWrite", "output"))
+    return rows, tok, models
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+
+    cfg = load_yaml(a.config) if os.path.isfile(a.config) else {}
+    homes = cfg.get("dsh_homes") or [cfg.get("dsh_home") or "~/.dsh"]
+    merged, found = {}, []
+    for h in homes:
+        home = expand(h)
+        led, p = read_ledger(home)
+        if led is None:
+            print(f"[skip] 没有 ledger: {p}", file=sys.stderr)
+            continue
+        found.append(p)
+        for k, v in (led.get("days") or {}).items():
+            tgt = merged.setdefault(k, {"date": k, "input": 0, "cacheRead": 0, "cacheWrite": 0,
+                                        "output": 0, "calls": 0, "costCny": 0.0, "byProviderModel": {}})
+            for f in ("input", "cacheRead", "cacheWrite", "output", "calls"):
+                tgt[f] += int(v.get(f) or 0)
+            tgt["costCny"] += float(v.get("costCny") or 0.0)
+            for m, mv in (v.get("byProviderModel") or {}).items():
+                dst = tgt["byProviderModel"].setdefault(m, {"calls": 0, "input": 0, "cacheRead": 0, "cacheWrite": 0, "output": 0})
+                for f in ("calls", "input", "cacheRead", "cacheWrite", "output"):
+                    dst[f] += int(mv.get(f) or 0)
+    if not merged:
+        sys.exit("没有可读的 ledger；检查 config 里的 dsh_home")
+
+    rows, tok, models = summarize(merged, a.days)
+    total_ctx = tok["input"] + tok["cacheRead"]
+    out = {
+        "ledgers": found,
+        "days": rows,
+        "totals": {
+            "cny": round(tok["cny"], 2),
+            "calls": tok["calls"],
+            "context_tokens": total_ctx,
+            "cache_read_share": round(tok["cacheRead"] / total_ctx * 100, 2) if total_ctx else 0,
+            "avg_context_per_call": int(total_ctx / tok["calls"]) if tok["calls"] else 0,
+            "cny_per_call": round(tok["cny"] / tok["calls"], 4) if tok["calls"] else 0,
+        },
+        "models": sorted(models.items(), key=lambda kv: -kv[1]["tokens"])[:10],
+    }
+    if a.json:
+        print(json.dumps(out, ensure_ascii=False, indent=2)); return
+
+    print(f"数据源: {len(found)} 个 ledger")
+    print(f"窗口: 最近 {len(rows)} 天 | 合计 ¥{out['totals']['cny']} | {out['totals']['calls']} 次调用")
+    print(f"上下文 {total_ctx/1e9:.3f} B | 缓存命中 {out['totals']['cache_read_share']}% | "
+          f"均值 {out['totals']['avg_context_per_call']/1000:.0f} k/次 | ¥{out['totals']['cny_per_call']}/次")
+    print("\n日期         ¥      调用     平均上下文")
+    for r in rows:
+        avg = (r["input"] + r["cacheRead"]) / r["calls"] if r["calls"] else 0
+        print(f"{r['date']}  {r['cny']:7.2f}  {r['calls']:6d}  {avg/1000:9.0f} k")
+    print("\n通道（按 token）")
+    for m, v in out["models"][:5]:
+        print(f"  {m:45s} {v['calls']:6d} 次  {v['tokens']/1e6:9.0f} M")
+
+if __name__ == "__main__":
+    main()

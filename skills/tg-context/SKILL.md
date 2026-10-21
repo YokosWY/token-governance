@@ -1,0 +1,74 @@
+---
+name: tg-context
+description: "tg 子技能 · 上下文工程：工具清单/技能目录/工具输出/压缩四项杠杆，含 preset 定制与 isolate 坑。会话变慢变贵时用。"
+---
+
+# tg-context · 上下文工程
+
+## 自适应（按窗口与能力选刀）
+
+- **探测**：上下文窗口多大；有无 `cordis.patch.yml`；有无 spill/压缩配置项。
+- **分支 A（1M 窗口 + 有 patch）**：四项杠杆全上，阈值 0.30–0.40。
+- **分支 B（200k 窗口）**：阈值 0.45–0.55，裁剪更激进（4096/2048/512）。
+- **分支 C（128k 窗口）**：阈值 0.55–0.65，且必须配长会话纪律（每 100 步换会话）。
+- **分支 D（无 preset 机制）**：把重工具挪进子代理，而不是 preset。
+- **分支 E（无 spill/pruner）**：靠"命令自带收口 + read 带 offset/limit"人工控制。
+- **都不可用**：退到 P4，只调压缩，不动工具。
+
+详见 `docs/adaptation.md` 的 B/C 两节。
+
+## 四项杠杆（按收益排序）
+
+| 刀 | 做法 | 实测（参考值） |
+|---|---|---|
+| 工具清单 | 不常用整套工具（如 GUI 自动化 56 个 / 107 KB）移进专用 preset | 304.7 → **145.5 KB** |
+| 技能目录 | 批量 `disable-model-invocation: true`，常驻只留 20–30 个 | 160 → **27 条**（约 -86%） |
+| 工具输出 | `spill-policy.maxInlineTokens` 落盘；pruner 只在压缩期裁 | >6 k tokens 落盘给路径 |
+| 压缩 | `thresholdRatio` + `retainRatio` | 462 k → 185 k |
+
+## 压缩的真实经济学
+
+```
+成本 = 压缩后首步按输入价重算整个新前缀（183 k ≈ ¥0.20，按 flash 价）
+节省 = (压缩前 − 压缩后) × 缓存价 ≈ ¥0.0067/步
+回本 ≈ 30 步
+```
+
+**剩余步数 <30 时不要降水位**，短会话降阈值反而亏。
+
+## preset 定制（把重工具隔离出去）
+
+```yaml
+- id: preset-gui
+  name: '<vendor>/agent-preset'          # 按你的发行版写包名
+  config:
+    id: gui
+    order: 5
+    plugins:
+      - ...
+      - id: computer-use-stack
+        name: cordis:group
+        group: true
+        isolate:                          # 服务型插件必须包组 + isolate
+          computerUse: true
+        config:
+          - id: computer-use
+            name: '<vendor>/computer-use'
+          - id: computer-use-cua-driver-native
+            name: '<vendor>/computer-use-cua-driver-native'
+```
+
+少了 `isolate` 那两行，整个 preset 报 `Preset services require isolate realms` 并"加载失败"。
+
+## 补丁层能改到哪一层
+
+- 顶层 id ✅
+- `group: true` 且 config 是数组的子项 ✅
+- **preset 的 `plugins` 是对象数组，不可按 id 寻址** ❌ → 只能整段覆盖该 preset
+
+## 检查清单
+
+- [ ] 工具数、schema KB 前后对比（`request/header` 可量）
+- [ ] 技能目录条数
+- [ ] 压缩是否真触发（`compaction/*` 事件）
+- [ ] 剩余步数是否够回本

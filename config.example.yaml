@@ -1,0 +1,27 @@
+# Token-Governance 配置模板 —— 复制为 config.yaml 后按本机修改
+# 所有路径支持 ~ 展开；相对路径相对 config.yaml 所在目录
+
+# DSH 数据目录（ledger、sessions、profiles 都在里面）
+dsh_home: "~/.dsh"
+
+# 多套 DSH 时列在这里（官方版 + 发行版常各有一份）
+# dsh_homes:
+#   - "~/.dsh"
+#   - "~/dsh-next"
+
+# 会话记忆根（对话夹）
+memory_root: "~/tg-memory"
+
+# 技能目录（放 SKILL.md 的地方）
+skills_dir: "~/.dsh/skills"
+
+# 预算告警（可选）：单日 ¥ 超过就提醒
+budget:
+  daily: null
+  weekly: null
+
+# 价格表（可选，用于把 token 折算成钱；不填则用 ledger 的实付）
+prices_usd_per_mtok:
+  input: 0.15
+  cached: 0.003
+  output: 0.6

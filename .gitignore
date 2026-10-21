@@ -1,0 +1,21 @@
+# 本地配置（含本机路径，不要提交）
+config.yaml
+
+# 历史备份
+_history/
+*.bak
+*.bak-*
+*.bak-tokenclean-*
+
+# 本地挂载（打包/发布时不应带）
+skills/*/docs
+
+# 运行产物
+__pycache__/
+*.pyc
+reports/
+tmp/
+
+# 宣传物 QA 产物
+promo/preview*/
+promo/checks.json
