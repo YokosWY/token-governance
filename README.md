@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.3-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.4-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -37,7 +37,7 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 
 ## 安装
 
-前提：Python 3.9+ 与 pyyaml（`pip install pyyaml`，预检读配置用）；复算会话需要 `zstd` 在 PATH（Git for Windows 自带）；循环守卫自检需要 Node 18+。
+前提：Python 3.9+、pyyaml（`pip install pyyaml`）；解压会话日志要 `zstd` 命令或 `pip install zstandard`，二选一；循环守卫自检需要 Node 18+。
 
 ```bash
 cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) 技能入目录，重启 DSH 后生效
