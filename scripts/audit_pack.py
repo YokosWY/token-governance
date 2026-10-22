@@ -111,7 +111,7 @@ def main():
 
     print()
     if not issues:
-        print("✓ 未发现问题")
+        print("OK 未发现问题")
         return
     for label, sev, msg in issues:
         print(f"[{label}] {sev}  {msg}")
