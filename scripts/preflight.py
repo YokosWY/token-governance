@@ -106,6 +106,13 @@ def main():
             if extra:
                 add("未覆盖的 preset", f"{prof}: {', '.join(extra)} 没有整段覆盖", "问：要不要一并覆盖")
 
+            # 7. 插件名漂移：patch 引用的包不在组合文件里 → 升级后很可能启动失败
+            pkg_patch = set(re.findall(r"^\s*name:\s*['\"]?(@[^'\"\s]+)", open(pp, encoding="utf-8", errors="ignore").read(), re.M))
+            pkg_comp = set(re.findall(r"^\s*name:\s*['\"]?(@[^'\"\s]+)", open(cp, encoding="utf-8", errors="ignore").read(), re.M))
+            lost = sorted(pkg_patch - pkg_comp)
+            if lost:
+                add("插件名漂移", f"{prof}: {', '.join(lost[:4])} 不在组合文件里", "升级可能删/改名了插件，先看启动日志再改 patch")
+
     # 准入判定：放行 0 / 待确认 1 / 拒绝 2
     blocked = not os.path.isdir(skills_dir)
     # 输出

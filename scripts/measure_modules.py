@@ -168,9 +168,54 @@ def load_price_config(path):
         return yaml.safe_load(f) or {}
 
 
+def list_sessions(root, days, limit):
+    """最近会话速查：步数 / 轮数 / CNY / 首条用户消息。给 --session 选 id 用。"""
+    import datetime, time
+    cutoff = time.time() - days * 86400
+    rows = []
+    for dp, _, fs in os.walk(root):
+        for f in fs:
+            if not f.endswith(".zstd"):
+                continue
+            p = os.path.join(dp, f)
+            try:
+                if os.path.getmtime(p) < cutoff:
+                    continue
+            except OSError:
+                continue
+            try:
+                ev = load_events(p)
+            except SystemExit:
+                raise
+            except Exception:
+                continue
+            r = analyze(ev)
+            if not r:
+                continue
+            preview = ""
+            for o in ev:
+                if o.get("type") in ("user/message", "user/delta"):
+                    txt = text_of(o).strip().replace("\n", " ")
+                    if txt:
+                        preview = txt[:32]
+                        break
+            rows.append((os.path.getmtime(p), os.path.basename(dp).replace("session-", "")[:8],
+                         datetime.datetime.fromtimestamp(os.path.getmtime(p)).strftime("%m-%d %H:%M"),
+                         r["steps"], r["turns"], sum(r["cost"].values()), r["tools_bytes"] or 0, preview))
+    rows.sort(reverse=True)
+    rows = rows[:limit]
+    print(f"{'id':10}{'修改时间':>13}{'步':>6}{'轮':>5}{'CNY':>9}{'schema':>8}  首条消息")
+    for _, sid, when, steps, turns, cost, tools, prev in rows:
+        print(f"{sid:10}{when:>13}{steps:>6}{turns:>5}{cost:>9.3f}{tools/1000:>7.0f}k  {prev}")
+    print(f"\n共 {len(rows)} 个（近 {days} 天，按修改时间倒序）；取 id 传给 --session。")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--session", required=True)
+    ap.add_argument("--session", default="")
+    ap.add_argument("--list", action="store_true", help="列出最近会话，按修改时间倒序")
+    ap.add_argument("--days", type=int, default=7, help="--list 的窗口天数")
+    ap.add_argument("--limit", type=int, default=15, help="--list 最多几条")
     ap.add_argument("--dsh-home", default="~/.dsh")
     ap.add_argument("--config", default="", help="从 config.yaml 读 prices_usd_per_mtok 与 rate")
     ap.add_argument("--rate", type=float, default=0.0, help="USD→CNY 汇率，覆盖配置")
@@ -196,6 +241,15 @@ def main():
         rate = a.rate
         src = f"{src}，汇率由 --rate 覆盖"
     set_prices(prices, rate, src)
+
+    root = os.path.join(os.path.expanduser(os.environ.get("DSH_HOME") or a.dsh_home), "sessions")
+    if a.list:
+        if not os.path.isdir(root):
+            sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
+        list_sessions(root, a.days, a.limit)
+        return
+    if not a.session:
+        sys.exit("需要 --session <id|path>，或加 --list 先看有哪些会话。")
 
     path = find_session(a.dsh_home, a.session)
     if not path:
