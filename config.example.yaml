@@ -25,3 +25,12 @@ prices_usd_per_mtok:
   input: 0.15
   cached: 0.003
   output: 0.6
+
+# 循环守卫（插件 dsh-loop-guard）的默认参数；安装脚本会写进对应 profile 的 loop-guard 条目
+loop_guard:
+  enabled: true
+  thresholds: [2, 4, 6]      # 第 2/4/6 次完全相同调用时追加提醒（不阻断）
+  askUserAt: 6               # 到第几次才允许问用户一次
+  argumentsPreviewChars: 160
+  exclude: [todo_write, job_output, job_list, job_kill, ask_user_question, send_message, present]
+  include: []                # 非空时只对这些工具生效

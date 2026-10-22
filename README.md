@@ -98,7 +98,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 
 ## 4. 里面有什么
 
-七个技能中仅路由层常驻，其余按需启用：
+八个技能中仅路由层常驻，其余按需启用：
 
 | 技能 | 管什么 | 常驻 |
 |---|---|---|
@@ -109,12 +109,13 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | `tg-orchestrate` | 子代理分档、任务书、审验 | 待机 |
 | `tg-gui` | 常规区与 GUI 区交接 | 待机 |
 | `tg-ops` | 补丁分层、备份、升级漂移 | 待机 |
+| `tg-loop` | 循环守卫：同一调用重复时的提醒与止损 | 待机 |
 
-其余六项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
+其余七项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
 
 这一取舍与本项目的核心主张一致：常驻项按步计费，每增加一项都是持续的固定开销。
 
-六个脚本都能单独跑：
+脚本都能单独跑：
 
 | 脚本 | 作用 |
 |---|---|
@@ -124,6 +125,10 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | `audit_pack.py` | 包自检：结构、frontmatter、交叉引用、旧词、可移植性 |
 | `check_yaml.py` | 校验补丁 YAML，自定义标签不会误报 |
 | `gen_preset_override.py` | 从组合配置重生成 preset 覆盖块（升级后必跑，见 `docs/principles.md` P9） |
+| `compare_days.py` | 按天对比单价、上下文、缓存未命中、输出 |
+| `new_session.py` | 新建对话夹卡片 |
+| `install_guard.py` | 把循环守卫装进指定 DSH home（默认 dry-run，带备份与卸载） |
+| `verify_guard.mjs` | 循环守卫离线自检：13 项断言，含与上游代码的一致性校验 |
 
 ---
 
@@ -141,6 +146,10 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | **前沿扫描** | 一问一停，或一次抛十个 | 只问前置条件已定的那批 |
 
 两套配套做法：自适应矩阵（换环境时选降级路径）、包自检（一条命令查有没有改坏）。
+
+**运行时防线：循环守卫。** 上表六项是文本策略，靠模型自觉；循环守卫是插件，命中才追加提醒。
+判据是「工具名 + 参数哈希」严格相等，第 2 / 4 / 6 次各提醒一次，不阻断调用、不弹窗、不结束会话；
+到第 6 次才允许问用户一次。实现与边界见 `docs/guard.md`，操作入口 `skills/tg-loop/SKILL.md`。
 
 ---
 
@@ -181,8 +190,9 @@ python tg/scripts/preflight.py --config tg/config.yaml
 ```
 token-governance/
   README.md  LICENSE  CHANGELOG.md  config.example.yaml
-  skills/            7 个技能
-  scripts/           6 个脚本
+  skills/            8 个技能
+  scripts/           10 个脚本（含循环守卫的安装与自检）
+  plugins/dsh-loop-guard/   循环守卫插件源码（与上游字节一致）
   docs/              原理、实测、机制、自适应、可移植性、术语表
   clarify-needs/     姊妹项目（预发）
 ```
@@ -251,6 +261,7 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 
 | 版本 | 内容 |
 |---|---|
+| v0.8 | 接入循环守卫：插件源码 + `tg-loop` 技能 + 安装/自检脚本 + `docs/guard.md` |
 | v0.7 | 首次发布；收录 clarify-needs（预发）；LICENSE 定为 MIT |
 | v0.6 | 实测报告；模块级复算脚本；发布检查清单 |
 | v0.5 | 全量安装 7 技能；`audit_pack.py` 入包 |
@@ -274,3 +285,4 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 | `portable-vs-local.md` | 哪些通用、哪些要按机器改、哪些不随包分发 |
 | `glossary.md` | 全部自造词的详细解释，含容易混的词对照 |
 | `mechanisms.md` | 六个自研机制：解决什么、怎么运作、怎么验证、何时失效 |
+| `guard.md` | 循环守卫：事件点、阈值语义、与 AGENTS 规则的分工、已知限制 |

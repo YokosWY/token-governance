@@ -1,0 +1,9 @@
+- insert:
+    - id: loop-guard
+      name: '@local/dsh-loop-guard'
+      config:
+        enabled: true
+        thresholds: [2, 4, 6]   # 第 2/4/6 次完全相同调用时插入提醒（不阻断）
+        askUserAt: 6            # 到第 6 次才允许问用户一次
+        argumentsPreviewChars: 160
+        exclude: [todo_write, job_output, job_list, job_kill, ask_user_question, send_message, present]
