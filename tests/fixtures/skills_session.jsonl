@@ -1,0 +1,6 @@
+{"type":"session","version":4,"id":"session-fixture-skills","createdAt":0}
+{"type":"request/header","seq":1,"data":{"header":{"tools":[{"name":"a"}]}}}
+{"type":"user/message","seq":2,"data":{"message":{"content":[{"type":"text","text":"/tg-removed 看一下"}]}}}
+{"type":"assistant/message","seq":3,"data":{"usage":{"inputTokens":900,"cacheReadTokens":9100,"outputTokens":120}}}
+{"type":"tool/call","seq":4,"data":{"name":"skill","arguments":"{\"name\":\"tg-cost\"}","callId":"s1"}}
+{"type":"tool/result","seq":5,"data":{"message":{"source":{"kind":"tool","callId":"s1"},"content":[{"type":"text","text":"ok"}]}}}

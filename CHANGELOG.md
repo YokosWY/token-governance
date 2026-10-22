@@ -3,6 +3,13 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.13 — 2026-10-22（P1：任务成本、技能埋点、补丁回滚）
+- 新增 `scripts/turn_cost.py`：按「一条用户指令 = 一轮任务」聚合，出每轮 CNY、步数、上下文/步、失败调用数，再给中位/均值/P90 与总花费。本机实测（近 1 天 347 轮）：每轮中位 ¥0.0506、均值 ¥0.0872、P90 ¥0.1979；有失败调用的轮次 104/347
+- 新增 `scripts/skill_usage.py`：统计 `skill` 工具调用与 `/名字` 直接调用，并标出「已装/待机」与从未被调用的 `tg-*`。本机实测：tg-gui / tg-loop / tg-orchestrate 近 7 天 0 次
+- 新增 `scripts/patch_snapshot.py`：`--snapshot` 拍补丁、`--list` 列快照、`--diff` 对比、`--restore latest` 回滚（回滚前先备份当前、校验 YAML 合法）；本机已拍第一张快照并验证 diff/restore 往返
+- `tests/run_tests.py` 扩到 18 项（新增任务成本、技能埋点、快照回滚三项）
+- `README` 脚本表与徽章同步（17 个脚本）
+
 ## v0.10.12 — 2026-10-22（P0：回归测试 + 数字单源）
 - 新增 `tests/run_tests.py` + `tests/fixtures/`：11 项断言（解压回退、计价与手算一致、外来日志拒绝、换参/失败重试口径、插件名漂移、首日基线可写可比、文档数字一致、包自检），纯标准库，不需要 pytest
 - 新增 `data/metrics.json` + `scripts/gen_metrics.py`：README 与 `benchmark.md` §9.5 的汇总表由 json 生成（`--write`），`--check` 由 `audit_pack.py` 调用；手改文档数字会被抓出（已做变异测试：改一个数字 → 测试红）

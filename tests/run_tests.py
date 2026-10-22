@@ -132,11 +132,56 @@ def main():
     check("基线可写", r1.returncode == 0 and os.path.isfile(bfile))
     check("基线可对比", r2.returncode == 0 and "起始上下文" in r2.stdout)
 
-    # 7. 数字单源
+    # 7. 任务成本：一条用户指令 = 一轮
+    r = run("turn_cost.py", "--config", prices, "--dsh-home", home, "--days", "1", "--json")
+    try:
+        tc = json.loads(r.stdout).get("summary", {})
+    except Exception:
+        tc = {}
+    check("任务成本按轮聚合", tc.get("turns") == 2, str(tc.get("turns")))
+    expect_total = (580.5 + 408.6) * 7.1 / 1e6
+    check("任务成本合计与手算一致", abs(float(tc.get("cost_total", 0)) - expect_total) < 0.001,
+          f"{tc.get('cost_total')} vs {expect_total:.4f}")
+
+    # 8. 技能埋点
+    skhome = os.path.join(tmp, "skhome")
+    os.makedirs(os.path.join(skhome, "skills", "tg-cost"), exist_ok=True)
+    os.makedirs(os.path.join(skhome, "skills", "tg-router"), exist_ok=True)
+    with open(os.path.join(skhome, "skills", "tg-cost", "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: tg-cost\ndisable-model-invocation: true\n---\n")
+    with open(os.path.join(skhome, "skills", "tg-router", "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: tg-router\n---\n")
+    put_session(skhome, "session-sk", "skills_session.jsonl", tmp)
+    r = run("skill_usage.py", "--dsh-home", skhome, "--skills-dir", os.path.join(skhome, "skills"),
+            "--days", "1", "--json")
+    try:
+        su = json.loads(r.stdout)
+    except Exception:
+        su = {}
+    check("技能调用被统计", su.get("skill_tool_calls", {}).get("tg-cost") == 1, str(su.get("skill_tool_calls")))
+    check("/名字 调用被统计", su.get("slash_calls", {}).get("tg-removed") == 1, str(su.get("slash_calls")))
+    check("待机状态被识别", su.get("tg_installed", {}).get("tg-cost") == "待机", str(su.get("tg_installed")))
+
+    # 9. 补丁快照与回滚
+    phome = os.path.join(tmp, "phome")
+    pdir = os.path.join(phome, "profiles", "desktop")
+    os.makedirs(pdir, exist_ok=True)
+    ppatch = os.path.join(pdir, "cordis.patch.yml")
+    with open(ppatch, "w", encoding="utf-8") as f:
+        f.write("- id: a\n")
+    r1 = run("patch_snapshot.py", "--home", phome, "--snapshot")
+    with open(ppatch, "w", encoding="utf-8") as f:
+        f.write("- id: broken\n")
+    r2 = run("patch_snapshot.py", "--home", phome, "--restore", "latest")
+    restored = open(ppatch, encoding="utf-8").read()
+    check("快照可拍", r1.returncode == 0 and "已拍快照" in r1.stdout)
+    check("回滚恢复内容", r2.returncode == 0 and restored.strip() == "- id: a")
+
+    # 10. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
 
-    # 8. 包自检
+    # 11. 包自检
     r = run("audit_pack.py")
     check("audit_pack 通过", r.returncode == 0)
 
