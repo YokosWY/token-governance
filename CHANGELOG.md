@@ -3,6 +3,20 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.9 — 2026-10-22（首日基线、会话检索、插件名漂移）
+- 新增 `scripts/baseline.py`：不需要 ledger，直接记静态量（起始上下文 / 工具 schema / 技能目录单条 / 步轮比，取最近 5 个 ≥5 步会话的中位数），`--write` 记基线、`--compare` 隔天比对；解决新装当天「什么都没发生」
+- `measure_modules.py`：新增 `--list`（`--days`/`--limit`）列出最近会话（id、时间、步、轮、CNY、schema、首条消息），`--session` 改为非必填
+- `preflight.py`：新增「插件名漂移」——patch 里引用的 `@scope/pkg` 不在组合 `cordis.yml` 里就报出来（插件被删或改名会导致启动失败）。实测 patch 引用 38 个包当前全部命中；模拟改名可稳定报出
+- 本机实测：基线五会话中位 = 起始 54 k / schema 154 kB / 目录 9.8 kB；把基线改成旧值后 `--compare` 输出 −45.2% / −50.6% / −77.0%，与实测表一致
+- `README` 脚本表与徽章同步（脚本 13 个）
+
+## v0.10.8 — 2026-10-22（缓存命中：provider 无关化）
+- 新增 `docs/cache-hit.md`：三类缓存判据（自动前缀 / 显式 TTL / 无缓存）、三个公式、**价差倍数 k 决定一切**（k=2/10/50 时 miss 1.3% 分别占成本 2.6%/11.6%/39.7%）、打穿前缀的 7 个来源与 DSH/Claude Code/Codex 映射、无账本测法
+- 新增 `scripts/cache_audit.py`：只读、纯标准库；三源自动降级（DSH ledger / 任意 jsonl / 手工模板）；输出命中率、未命中/步、按 k 折算的未命中成本占比、前缀重建事件（「全量重算」input 占比 >50%、「前缀突变」上下文 >1.5 倍两种判据）；显式 `--ledger/--home` 不存在直接报错，不回退到别的 home
+- 口径更正：本机 `config.yaml` 价差 k=50（$0.15 vs $0.003/M），未命中 1.3% 占上下文成本约 39%；此前按 k=10 估的 8.6% 作废
+- 首跑（本机近 7 天）：命中率 98.73%、未命中 2,953/步、未命中成本占比 39.1%（按 config 价格表口径，k=50）
+- `README` 快速开始/脚本表/文档列表、`portable-vs-local.md` A 表、`tg-context` 同步登记；`audit_pack.py` 0 问题
+
 ## v0.10.7 — 2026-10-22（失败重试口径）
 - `retry_patterns.py`：新增失败判据——非零退出码（`[exit code: N]`）或以 `Error` / `Traceback` / `ENOENT` 开头；只有串内至少一次报错的才算「失败重试」
 - 修 bug：`tool/result` 的 callId 在 `data.message.source.callId`，不在 `data.toolCallId`；v0.10.6 第一版映射取错字段，失败数恒为 0

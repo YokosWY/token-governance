@@ -1,8 +1,8 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.7-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-11-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.9-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-13-6B6A66?style=flat-square)](scripts)
 
-TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
+TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、13 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
 它不改模型单价，只做两件事：用逐 step 用量日志把开销拆到模块，再改配置让每步重发的那部分变小。
 
@@ -49,7 +49,10 @@ python scripts/preflight.py --config config.yaml   # 3) 只读预检：放行 0 
 
 ```bash
 python scripts/cost_summary.py --config config.yaml --days 3   # 输出含 合计 CNY
+python scripts/cache_audit.py --config config.yaml --days 3    # 只算缓存：命中率、未命中/步、价差 k
 ```
+
+没有账本也能测：`python scripts/cache_audit.py --jsonl <session.jsonl>`，或 `--template` 打印手工采集格式。
 
 只想要路由层也可以：复制 `skills/tg-router` 与 `scripts/` 就能跑，其余技能按需加。
 
@@ -87,9 +90,11 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 | 脚本 | 作用 |
 |---|---|
 | `cost_summary.py` | 读账本，出总量、通道、日均、命中率 |
-| `measure_modules.py` | 按模块复算会话，可做配置对比 |
+| `cache_audit.py` | 缓存体检：命中率、未命中/步、前缀重建事件、按价差 k 折算的未命中成本占比（只读，纯标准库） |
+| `measure_modules.py` | 按模块复算会话，可做配置对比；`--list` 列出最近会话可选 id |
 | `compare_days.py` | 按天对比单价、上下文、未命中、输出 |
-| `preflight.py` | 安装前查冲突 |
+| `baseline.py` | 首日基线：记起始上下文/schema/目录，隔天 `--compare` 对比 |
+| `preflight.py` | 安装前查冲突，含覆盖块与插件名漂移 |
 | `audit_pack.py` | 包自检：结构、引用、旧词、可移植性 |
 | `check_yaml.py` | 校验补丁 YAML |
 | `gen_preset_override.py` | 升级后重生成 preset 覆盖块 |
@@ -113,6 +118,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 - [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字
 - [`docs/principles.md`](docs/principles.md)：十二条原理与阈值推导
 - [`docs/guard.md`](docs/guard.md)：循环守卫的事件点、参数哈希与已知限制
+- [`docs/cache-hit.md`](docs/cache-hit.md)：缓存命中（provider 无关）：三类缓存、价差倍数 k、打穿前缀的 7 个来源
 - 其余在 `docs/`：`mechanisms.md` 六个机制、`adaptation.md` 换环境降级、`portable-vs-local.md` 可移植边界、`glossary.md` 术语、`design.md` 色板
 
 ## 贡献
