@@ -3,6 +3,19 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.0 — 2026-10-22（长期记忆库分层）
+- 新增 `skills/tg-memlib/`：CORE 永久层（≤4KB，每次必读）+ INDEX 路由 + 分级提炼判据 + 手工晋升/降级 + 冲突覆盖写法 + 收尾入库链与三项验收
+- 与 `tg-memory` 明确分工：短期对话夹 vs 跨会话长期/永久
+- 关键取舍：**不做 tier 字段、自动晋升、时间衰减**——无引用计数埋点，自动判定会误升误删；先人工跑顺，有埋点再谈
+- `tg-router` 五域表、`README` 技能表/场景表/目录结构登记（8 → 9 个技能）
+- 移植安全：路径全用 `${MEMLIB_ROOT}` 占位符，正文不含本机绝对路径
+
+## v0.9.0 — 2026-10-22（高费低频工具隔离模板）
+- 新增 `skills/tg-isolate/`：把「GUI 区」抽象成通用流程 —— 测量 → 判定 → 生成独立 preset → **询问是否安装** → 落补丁 → 验证回滚；适用于 GUI/浏览器/MCP/音视频/大型文档等重工具，不限 GUI
+- 新增 `skills/tg-isolate/templates/preset-isolate.yml`：可直接改占位符的 preset 骨架（含 isolate/group 必需写法、基础段、压缩段）
+- `tg-router` 五域表与 `README` 技能表/场景表登记入口
+- 落地提示：宿主 skills 目录建议用 **Junction** 挂载（Windows 下 `ln -s` 报 EPERM；PowerShell `New-Item -ItemType Junction` 可用）。TG 正文不含本机路径
+
 ## v0.8.0 — 2026-10-22（循环守卫接入）
 - 新增 `plugins/dsh-loop-guard/`：插件源码（与上游 `local-plugins` 字节一致，`verify_guard.mjs` 会校验哈希）
 - 新增 `skills/tg-loop/`：命中后的三处置、阈值调参、安装与验证入口

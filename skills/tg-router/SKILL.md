@@ -30,8 +30,10 @@ description: "TG 总入口与技能路由。任何要控成本、要跨会话续
 | 花太多钱 / 要算账 | `tg-cost` |
 | 会话变慢变贵 / 想瘦身 | `tg-context` |
 | 任务跨天 / 要接着上次 | `tg-memory` |
+| 记忆库越堆越乱 / 要定「永久层」 | `tg-memlib` |
 | 难活 / 要质量兜底 | `tg-orchestrate` |
 | 要点界面 / 要截图 | `tg-gui` |
+| 某类工具又贵又少用 | `tg-isolate` |
 | 改 patch / 改 preset / 升级后 | `tg-ops` |
 | 反复做同一个动作、被循环守卫点名 | `tg-loop` |
 

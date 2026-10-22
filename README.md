@@ -98,7 +98,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 
 ## 4. 里面有什么
 
-八个技能中仅路由层常驻，其余按需启用：
+九个技能中仅路由层常驻，其余按需启用：
 
 | 技能 | 管什么 | 常驻 |
 |---|---|---|
@@ -106,12 +106,14 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | `tg-cost` | 审计、归因、算收益 | 待机 |
 | `tg-context` | 工具清单 / 技能目录 / 输出（压缩只作安全阀） | 待机 |
 | `tg-memory` | 对话夹、里程碑、跨区交接 | 待机 |
+| `tg-memlib` | 长期记忆库：CORE 永久层、分级提炼、晋升/降级、冲突覆盖 | 待机 |
 | `tg-orchestrate` | 子代理分档、任务书、审验 | 待机 |
 | `tg-gui` | 常规区与 GUI 区交接 | 待机 |
+| `tg-isolate` | 高费低频工具隔离：测量→判定→生成独立 preset→询问安装→验证回滚（GUI/浏览器/MCP/音视频通用） | 待机 |
 | `tg-ops` | 补丁分层、备份、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫：同一调用重复时的提醒与止损 | 待机 |
 
-其余七项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
+其余八项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
 
 这一取舍与本项目的核心主张一致：常驻项按步计费，每增加一项都是持续的固定开销。
 
@@ -160,8 +162,10 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | 想知道这周花了多少 | `tg-cost` |
 | 会话越来越慢、越来越贵 | `tg-context` |
 | 接着上次的活干 | `tg-memory` |
+| 记忆库越堆越乱、想定「永久层」 | `tg-memlib` |
 | 活太难，怕做歪 | `tg-orchestrate` |
 | 要点界面、要截图 | `tg-gui` |
+| 某类工具又贵又少用（GUI/浏览器/MCP/音视频） | `tg-isolate` |
 | 改完配置不对劲，或者刚升级 | `tg-ops` |
 
 不用记命令，`tg-router` 会按场景转发。
@@ -190,7 +194,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 ```
 token-governance/
   README.md  LICENSE  CHANGELOG.md  config.example.yaml
-  skills/            8 个技能
+  skills/            9 个技能
   scripts/           10 个脚本（含循环守卫的安装与自检）
   plugins/dsh-loop-guard/   循环守卫插件源码（与上游字节一致）
   docs/              原理、实测、机制、自适应、可移植性、术语表
@@ -261,6 +265,7 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 
 | 版本 | 内容 |
 |---|---|
+| v0.9 | 新增 `tg-isolate`：高费低频工具隔离的通用模板（询问后安装，预设骨架自带上） |
 | v0.8 | 接入循环守卫：插件源码 + `tg-loop` 技能 + 安装/自检脚本 + `docs/guard.md` |
 | v0.7 | 首次发布；收录 clarify-needs（预发）；LICENSE 定为 MIT |
 | v0.6 | 实测报告；模块级复算脚本；发布检查清单 |
