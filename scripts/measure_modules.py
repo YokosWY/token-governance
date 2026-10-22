@@ -2,18 +2,27 @@
 """按 step 重放一个会话，把上下文拆成模块并折成钱；可做配置反事实对比。
 
 用法：
-  python measure_modules.py --session <id|path>
+  python measure_modules.py --session <id|path> [--config config.yaml]
   python measure_modules.py --session <id> --cf-schema 284000 --cf-catalog 42500
   python measure_modules.py --session <id> --json
 
-价格默认 input $0.15 / cacheRead $0.003 / output $0.6（每百万 token），汇率 7.1。
+只认 DSH v4 会话日志（session.v4.jsonl.zstd）。
+价格默认 input $0.15 / cacheRead $0.003 / output $0.6（每百万 token）、汇率 7.1；
+--config 可写 prices_usd_per_mtok 与 rate 覆盖，未覆盖时输出标「默认 flash 价（估算）」。
 """
 import argparse, json, os, subprocess, sys
 
-RATE = 7.1
-C_IN = 0.15 * RATE / 1e6
-C_READ = 0.003 * RATE / 1e6
-C_OUT = 0.6 * RATE / 1e6
+DEFAULT_RATE = 7.1
+DEFAULT_PRICES = {"input": 0.15, "cached": 0.003, "output": 0.6}
+
+PRICES = {}          # 由 set_prices() 填充，单位 CNY / 百万 token
+PRICE_SOURCE = "默认 flash 价（估算）"
+
+
+def set_prices(prices, rate, source="默认 flash 价（估算）"):
+    global PRICES, PRICE_SOURCE
+    PRICES = {k: float(v) * rate / 1e6 for k, v in prices.items()}
+    PRICE_SOURCE = source
 
 
 def find_session(dsh_home, key):
@@ -29,7 +38,10 @@ def find_session(dsh_home, key):
 
 
 def load_events(path):
-    raw = subprocess.run(["zstd", "-dc", path], capture_output=True).stdout
+    try:
+        raw = subprocess.run(["zstd", "-dc", path], capture_output=True).stdout
+    except FileNotFoundError:
+        sys.exit("找不到 zstd 命令。Windows 用 Git for Windows 自带的；macOS 执行 brew install zstd。")
     out = []
     for line in raw.split(b"\n"):
         if not line.strip():
@@ -95,11 +107,11 @@ def analyze(events):
     tok_per_char = total_ctx / (sum(acc.values()) or 1)
     ctx_in = sum(r[2] for r in step_rows)
     ctx_read = sum(r[3] for r in step_rows)
-    blended = (ctx_in * C_IN + ctx_read * C_READ) / max(ctx_in + ctx_read, 1)
+    blended = (ctx_in * PRICES["input"] + ctx_read * PRICES["cached"]) / max(ctx_in + ctx_read, 1)
     out_tok = sum(r[1] for r in step_rows)
 
     cost = {m: ch * tok_per_char * blended for m, ch in acc.items()}
-    cost["助手输出"] = out_tok * C_OUT
+    cost["助手输出"] = out_tok * PRICES["output"]
     toks = {m: int(ch * tok_per_char) for m, ch in acc.items()}
     toks["助手输出"] = out_tok
     return dict(steps=len(step_rows), turns=max(turns, 1), cost=cost,
@@ -119,14 +131,45 @@ def counterfactual(r, cf_schema, cf_catalog):
     return sum(c.values()), f_s, f_c
 
 
+def load_price_config(path):
+    if not path or not os.path.isfile(path):
+        return {}
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("读 --config 需要 pyyaml：pip install pyyaml")
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", required=True)
     ap.add_argument("--dsh-home", default="~/.dsh")
+    ap.add_argument("--config", default="", help="从 config.yaml 读 prices_usd_per_mtok 与 rate")
+    ap.add_argument("--rate", type=float, default=0.0, help="USD→CNY 汇率，覆盖配置")
     ap.add_argument("--cf-schema", type=int, default=0, help="对照的工具 schema 字节数")
     ap.add_argument("--cf-catalog", type=int, default=0, help="对照的技能目录单条字节数")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
+
+    prices, rate, src = dict(DEFAULT_PRICES), DEFAULT_RATE, "默认 flash 价（估算）"
+    cfg = load_price_config(a.config)
+    if cfg:
+        p = cfg.get("prices_usd_per_mtok") or {}
+        found = False
+        for k in list(prices):
+            if p.get(k) is not None:
+                prices[k] = float(p[k])
+                found = True
+        if cfg.get("rate") is not None:
+            rate = float(cfg["rate"])
+            found = True
+        src = f"config: {a.config}" if found else f"config: {a.config} 没有价格表，用默认 flash 价（估算）"
+    if a.rate:
+        rate = a.rate
+        src = f"{src}，汇率由 --rate 覆盖"
+    set_prices(prices, rate, src)
 
     path = find_session(a.dsh_home, a.session)
     if not path:
@@ -134,17 +177,28 @@ def main():
     events = load_events(path)
     if not events:
         sys.exit(f"会话文件里没有可解析事件（zstd 解压失败或文件被截断）: {path}")
+    types = {o.get("type") for o in events if isinstance(o, dict)}
+    if "assistant/message" not in types or "request/header" not in types:
+        seen = ", ".join(sorted(t for t in types if t)[:10]) or "（空）"
+        sys.exit("不支持的日志格式：只认 DSH v4 会话（session.v4.jsonl.zstd，"
+                 "含 request/header 与 assistant/message 的 usage）。\n"
+                 f"这个文件里的类型：{seen}\n"
+                 "其它客户端（Claude Code / Codex / Cursor）没有同构日志；方法可照搬，脚本不适用。")
     r = analyze(events)
     if not r:
         sys.exit("该会话没有 usage 记录（刚开始的会话或没有 assistant 步）")
     total = sum(r["cost"].values())
 
     if a.json:
-        print(json.dumps({k: v for k, v in r.items() if k != "cost"} | {"total": total, "cost": r["cost"]},
+        print(json.dumps({k: v for k, v in r.items() if k != "cost"} |
+                         {"total": total, "cost": r["cost"], "price_basis": PRICE_SOURCE,
+                          "prices_usd_per_mtok": prices, "rate": rate},
                          ensure_ascii=False, indent=2, default=int))
         return
 
     print(f"会话 {os.path.basename(os.path.dirname(path))}")
+    print(f"计价: input ${prices['input']}/M cacheRead ${prices['cached']}/M output ${prices['output']}/M"
+          f" × {rate}（{PRICE_SOURCE}）")
     print(f"步={r['steps']} 轮={r['turns']} 总CNY={total:.3f} 每轮CNY={total/r['turns']:.4f} "
           f"上下文={r['total_ctx']/1e6:.1f}M 输出={r['out_tok']/1e3:.0f}k")
     print(f"schema={r['tools_bytes']}B 目录单条={r['cat_copy']:.0f}B")

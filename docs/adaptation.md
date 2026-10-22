@@ -67,6 +67,8 @@
 
 判据：能挂"每步固定前缀"的才算有 preset 能力；否则 P7 改成"子代理隔离"。
 
+上表是方法层。`scripts/` 里的数据脚本只认 DSH：`measure_modules.py` 读 `session.v4.jsonl.zstd` 的 `request/header` + `assistant/message`，`cost_summary.py` 读 cost-meter 的 `ledger.json`。换客户端时这两点不可用，得自己接日志或只做估算（并按 §A 标注估算与假设）。
+
 ---
 
 ## D · 部署形态

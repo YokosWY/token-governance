@@ -3,6 +3,16 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.3 — 2026-10-22（非本机可用性：价格、日志格式、阈值）
+- `measure_modules.py`：价格不再写死——新增 `--config`（读 `prices_usd_per_mtok` 与 `rate`）与 `--rate`，默认仍是 flash 价，但输出与 `--json` 都会标「默认 flash 价（估算）」或配置来源
+- `measure_modules.py`：遇到非 DSH v4 日志（缺 `request/header` / `assistant/message`）直接说明「不支持的日志格式」并列出实际类型，不再笼统报「没有 usage 记录」；缺 `zstd` 命令时给安装提示
+- `gen_preset_override.py`：新增 `--window`（上下文窗口 token），pruner 阈值默认取窗口大小；`--pruner-threshold 0` 即跟随 `--window`。阈值不再只按本机 200 k 写死
+- `config.example.yaml`：补 `rate: 7.1`，并把价格表说明改为「measure_modules 折算用，有实付以实付为准」
+- `preflight.py`：补丁条目探测补 `preset-ptc` / `preset-cordis`
+- `new_session.py`：`--root` 缺省读 `config.yaml` 的 `memory_root`，不再与配置脱节
+- `CONTRIBUTING.md`：删掉本机代理地址，改为「直连失败时自备代理，值不进仓库」
+- 文档：README 与 `benchmark.md` 标样本口径（单机、flash、200 k 窗口）；`principles.md` 的 160/56 计数标「本机样本」；`adaptation.md` §C 明确脚本只认 DSH
+
 ## v0.10.2 — 2026-10-22（空环境接入收口）
 - `preflight.py`：冲突清单补 `tg-memlib` / `tg-isolate` / `tg-loop`（7 → 10 个技能）；此前这三个同名已存在时预检报「放行」，复制时静默覆盖
 - `preflight.py`：缺 pyyaml 从「打印一行后按默认 `~/.dsh/skills` 探测」改为直接拒绝（退出码 2），避免查错目录还给出结论

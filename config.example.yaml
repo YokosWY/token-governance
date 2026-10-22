@@ -20,11 +20,13 @@ budget:
   daily: null
   weekly: null
 
-# 价格表（可选，用于把 token 折算成钱；不填则用 ledger 的实付）
+# 价格表（可选）：measure_modules 按 token 折算时用；ledger 有实付时以实付为准
 prices_usd_per_mtok:
   input: 0.15
   cached: 0.003
   output: 0.6
+# USD→CNY 汇率；不写则为 7.1，输出会标注「默认 flash 价（估算）」
+rate: 7.1
 
 # 循环守卫（插件 dsh-loop-guard）的默认参数；安装脚本会写进对应 profile 的 loop-guard 条目
 loop_guard:

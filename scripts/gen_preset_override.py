@@ -8,9 +8,11 @@ cordis.patch.yml 的片段。
 用法：
   python gen_preset_override.py --composed ~/.dsh/profiles/desktop/cordis.yml \
       --presets preset-standard,preset-gui,preset-ptc,preset-cordis \
-      --pruner-threshold 200000 --compact-threshold 0.8 > preset-blocks.yml
+      --window 200000 > preset-blocks.yml
 
 注意：
+  - 阈值按窗口定，不照抄：pruner 默认等于 --window（等于不触发），压缩水位默认 0.8。
+    窗口 128k 的机器传 --window 128000；窗口 1M 的机器传 --window 1000000。
   - 只在原块已有对应键时改值，不新增键；缺 compaction 配置的 preset 会打印提示，
     表示它走插件默认值。
   - 生成后先跑 scripts/check_yaml.py，再重启验证组合结果。
@@ -55,9 +57,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--composed", required=True)
     ap.add_argument("--presets", required=True, help="逗号分隔的 preset id")
-    ap.add_argument("--pruner-threshold", type=int, default=200000)
+    ap.add_argument("--window", type=int, default=200000, help="上下文窗口 token；pruner 默认等于它")
+    ap.add_argument("--pruner-threshold", type=int, default=0, help="字符数；0 表示取 --window")
     ap.add_argument("--compact-threshold", type=float, default=0.8)
     args = ap.parse_args()
+    pruner = args.pruner_threshold or args.window
+    print(f"# 阈值: pruner={pruner} 字符（窗口 {args.window}）, compaction={args.compact_threshold}",
+          file=sys.stderr)
 
     raw = io.open(args.composed, encoding="utf-8", newline="").read()
     nl = "\r\n" if "\r\n" in raw else "\n"
@@ -68,7 +74,7 @@ def main():
         if pid not in blocks:
             print(f"# 跳过 {pid}: composed 里没有这个 preset", file=sys.stderr)
             continue
-        body, changed = adjust(blocks[pid], args.pruner_threshold, args.compact_threshold)
+        body, changed = adjust(blocks[pid], pruner, args.compact_threshold)
         has_compact_cfg = any("thresholdRatio:" in x for x in body)
         print(f"# {pid}: pruner 改 {changed['pruner']} 处, compaction 改 {changed['compact']} 处"
               + ("" if changed["compact"] else "（走插件默认阈值）"), file=sys.stderr)

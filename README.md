@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.2-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.3-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -30,6 +30,8 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 | 裁剪 / 压缩次数 | 4–12 / 3–12 | 0 / 0 | −100% |
 
 同一会话代回旧参数重放，每轮再降 30–39%。这是下限：反事实只替换 schema 与目录体积，没有模拟旧配置下裁剪与压缩造成的前缀重算。
+
+样本口径：单机、deepseek-flash、200 k 窗口。工具数、目录体积、步数都是本机实测，换机器数值会不同；方法与脚本通用，价格按 `config.yaml` 改。
 
 方法与逐会话数字见 [`docs/benchmark.md`](docs/benchmark.md)，复现命令在该文第八、九节。
 
@@ -98,6 +100,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 ## 不支持
 
 - 跨客户端不保证：Claude Code、Codex、Cursor 没有 preset 机制，高费工具隔离得改走子代理，见 `docs/adaptation.md`。
+- 脚本只认 DSH：`measure_modules.py` 读 DSH v4 会话日志，`cost_summary.py` 读 cost-meter 账本；换客户端只有方法能搬。
 - 压缩不当杠杆：729 步会话压缩 4 次，成本约 ¥0.8、省下约 ¥1.0，净收益接近零。
 - 不看账本不下结论：schema 变小、命中率上升都只是过程量。
 - 补丁不随包：工具裁剪、pruner、压缩阈值都在各机器自己的 `cordis.patch.yml`，复制技能不会降低账单。

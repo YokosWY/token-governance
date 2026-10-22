@@ -76,7 +76,7 @@ def main():
                 continue
             txt = open(pp, encoding="utf-8", errors="ignore").read()
             for tag in ("spill-policy", "compaction-basic", "tool-result-pruner",
-                        "preset-standard", "preset-gui"):
+                        "preset-standard", "preset-gui", "preset-ptc", "preset-cordis"):
                 if f"id: {tag}" in txt:
                     hits.append(f"{prof}:{tag}")
     if hits:

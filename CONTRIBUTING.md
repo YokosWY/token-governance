@@ -34,7 +34,7 @@ fix: 修正 README 语句错误
 - 验证权限（scope、token 能力）只能用只读调用：`gh auth status`、`gh api <资源>`（GET）。**不拿真实仓库或资源发 DELETE、transfer、archive 等写请求去「试探」权限。**
 - 删除类命令执行前：① 逐字确认目标路径或仓库名；② 先确认目标存在；③ 有条件时先备份（`git bundle` 或导出）。
 - 改写远端历史（`filter-branch`、`push --force`）前必须先备份，并把备份路径写进会话卡。
-- 本机访问 GitHub 走代理：`HTTPS_PROXY=http://127.0.0.1:7897`（直连 443 会失败）。
+- 访问 GitHub 直连 443 失败时自备代理（`HTTPS_PROXY` 按本机设置，值不进仓库、不进提交说明）。
 
 ## 提交前自查
 
