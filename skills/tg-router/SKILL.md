@@ -33,6 +33,7 @@ description: "TG 总入口与技能路由。任何要控成本、要跨会话续
 | 难活 / 要质量兜底 | `tg-orchestrate` |
 | 要点界面 / 要截图 | `tg-gui` |
 | 改 patch / 改 preset / 升级后 | `tg-ops` |
+| 反复做同一个动作、被循环守卫点名 | `tg-loop` |
 
 调起方式：`read ${SKILLS_DIR}/tg-cost/SKILL.md`，或用户 `/tg-cost`。
 
