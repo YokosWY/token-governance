@@ -3,6 +3,11 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.17 — 2026-10-22（README 补全信息）
+- README 重写为完整版（236 行 / 12 KB）：特性 8 条、实测 + 三件反直觉发现、三个快速开始示例（账本 / 拆会话 / 任务成本）、技能与脚本完整清单（10 / 18）、插件说明、完整 config 示例（含 loop_guard 与 prices）、自检三条命令、口径定义表、边界清单、版本摘要
+- 保留九段骨架与数字单源块；表格由 `gen_metrics.py --write` 重新生成
+- 验收：`audit_pack` 0 问题、测试 23/23、`gen_metrics --check` 通过
+
 ## v0.10.16 — 2026-10-22（P2-b：文档收敛 11 → 5）
 - 合并：`glossary.md` + `mechanisms.md` → `concepts.md`；`guard.md` + `protocol.md` → `operations.md`；`portable-vs-local.md` 并入 `adaptation.md` 附录；`cache-hit.md` 并入 `benchmark.md` 第十节
 - 归档：`design.md`（色板与版式）→ `_history/design-20261022.md`，不在 `docs/` 露出
