@@ -29,6 +29,13 @@ fix: 修正 README 语句错误
 - 本机路径、账号、密钥、内部清单与发布流程；这些放 `_local/`（已 gitignore）。
 - 未经实测的收益表。
 
+## 破坏性操作的前置检查
+
+- 验证权限（scope、token 能力）只能用只读调用：`gh auth status`、`gh api <资源>`（GET）。**不拿真实仓库或资源发 DELETE、transfer、archive 等写请求去「试探」权限。**
+- 删除类命令执行前：① 逐字确认目标路径或仓库名；② 先确认目标存在；③ 有条件时先备份（`git bundle` 或导出）。
+- 改写远端历史（`filter-branch`、`push --force`）前必须先备份，并把备份路径写进会话卡。
+- 本机访问 GitHub 走代理：`HTTPS_PROXY=http://127.0.0.1:7897`（直连 443 会失败）。
+
 ## 提交前自查
 
 1. `python scripts/audit_pack.py`（包完整性）或 `python scripts/check_yaml.py <补丁>`（配置语法）。
