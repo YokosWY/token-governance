@@ -12,7 +12,10 @@ def memory_root(config_path):
             import yaml
             cfg = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
             if cfg.get("memory_root"):
-                return os.path.expanduser(os.path.expandvars(str(cfg["memory_root"])))
+                s = os.path.expanduser(os.path.expandvars(str(cfg["memory_root"])))
+                if not os.path.isabs(s):
+                    s = os.path.join(os.path.dirname(os.path.abspath(config_path)), s)
+                return os.path.normpath(s)
         except Exception:
             pass
     return os.path.expanduser("~/tg-memory")

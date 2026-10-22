@@ -23,8 +23,11 @@ def load_yaml(path):
         return y.safe_load(f) or {}
 
 
-def expand(p):
-    return os.path.expanduser(os.path.expandvars(str(p)))
+def expand(p, base=None):
+    s = os.path.expanduser(os.path.expandvars(str(p)))
+    if base and not os.path.isabs(s):
+        s = os.path.join(base, s)
+    return os.path.normpath(s)
 
 
 def main():
@@ -33,9 +36,10 @@ def main():
     a = ap.parse_args()
 
     cfg = load_yaml(a.config)
-    skills_dir = expand(cfg.get("skills_dir") or "~/.dsh/skills")
-    memory_root = expand(cfg.get("memory_root") or "~/tg-memory")
-    dsh_home = expand(cfg.get("dsh_home") or "~/.dsh")
+    base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
+    skills_dir = expand(cfg.get("skills_dir") or "~/.dsh/skills", base)
+    memory_root = expand(cfg.get("memory_root") or "~/tg-memory", base)
+    dsh_home = expand(cfg.get("dsh_home") or "~/.dsh", base)
 
     rows, conflicts = [], 0
 
@@ -81,6 +85,26 @@ def main():
                     hits.append(f"{prof}:{tag}")
     if hits:
         add("补丁条目已存在", ", ".join(sorted(set(hits))[:6]), "问：合并 / 冲突项交给你手改")
+
+    # 6. 覆盖块漂移：patch 里覆盖的 preset 与组合文件里实际的 preset 对不上
+    if os.path.isdir(dsh_home):
+        prof_dir = os.path.join(dsh_home, "profiles")
+        for prof in (os.listdir(prof_dir) if os.path.isdir(prof_dir) else []):
+            pp = os.path.join(dsh_home, "profiles", prof, "cordis.patch.yml")
+            cp = os.path.join(dsh_home, "profiles", prof, "cordis.yml")
+            if not (os.path.isfile(pp) and os.path.isfile(cp)):
+                continue
+            import re
+            covered = set(re.findall(r"^\s*-\s*id:\s*(preset-\S+)", open(pp, encoding="utf-8", errors="ignore").read(), re.M))
+            if not covered:
+                continue
+            actual = set(re.findall(r"^\s*-\s*id:\s*(preset-\S+)", open(cp, encoding="utf-8", errors="ignore").read(), re.M))
+            gone = sorted(covered - actual)
+            extra = sorted(actual - covered)
+            if gone:
+                add("覆盖块漂移", f"{prof}: 覆盖了已不存在的 {', '.join(gone)}", "升级后重跑 gen_preset_override.py")
+            if extra:
+                add("未覆盖的 preset", f"{prof}: {', '.join(extra)} 没有整段覆盖", "问：要不要一并覆盖")
 
     # 准入判定：放行 0 / 待确认 1 / 拒绝 2
     blocked = not os.path.isdir(skills_dir)

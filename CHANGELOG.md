@@ -3,6 +3,14 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.5 — 2026-10-22（多机账本、相对路径、并发读、参数泄露）
+- `cost_summary.py`：多 `dsh_homes` 按 **ledger 真实路径去重**，同一份账本被软链或列两次只算一次；文档里"按会话 id 去重"的说法作废（账本只有日粒度）
+- `cost_summary.py` / `preflight.py` / `new_session.py`：相对路径改为按 `config.yaml` 所在目录解析，兑现 `config.example.yaml` 的承诺
+- `cost_summary.py`：`read_ledger` 加异常处理，读到写了一半的账本时提示重跑，不再抛 traceback
+- `preflight.py`：新增「覆盖块漂移」检查——patch 覆盖了组合文件里已不存在的 preset，或组合里新增的 preset 没被覆盖，都会报出来（本机实测：`preset-minimal` 未覆盖）
+- 循环守卫：`argumentsPreviewChars` 默认 160 → **0**（只报参数长度，不把内容写进上下文）；`exclude` 补 `http_request` 与 3 个 `mcp_connector_*` 写操作工具。已同步到本机安装副本（带备份，`check_yaml.py` 通过）
+- 文档：`adaptation.md` / `tg-cost` 改去重口径；`benchmark.md` 第九节加"勿把下限当总收益"；`guard.md` 补参数预览限制
+
 ## v0.10.4 — 2026-10-22（解压零外部依赖）
 - `measure_modules.py`：`zstd -dc` 失败或缺命令时回退到 Python `zstandard`（逐帧解，兼容多帧文件）；两者都没有才退出，并给出二选一的安装提示
 - 本机实测：去掉 PATH 里的 zstd、只用 `PYTHONPATH` 指向 `zstandard`，同一会话输出与原先一致（126 步 / ¥0.0378 每轮）

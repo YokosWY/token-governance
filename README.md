@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.4-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.5-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 

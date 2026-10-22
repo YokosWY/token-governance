@@ -50,6 +50,7 @@ return { ...downstream, additionalContexts: [reminder, ...existing] }
 3. 同一工具 + 相同参数但**目的不同**（例如同样读一个文件做两次不同检查）也会命中——提醒里已给出「若确实需要，请说明为什么重跑」的余地。
 4. 追加提醒占上下文；阈值低于 2 会明显变吵。
 5. 与其它「重复工具提醒」类插件（例如 `dsh-repeat-tool-reminder`）同时安装会重复提醒；只保留一个。
+6. 提醒消息里会带参数预览，默认 `argumentsPreviewChars: 0`（只报长度）。调大就会把参数前 N 个字符写进上下文；带 `Authorization` / token 的工具别调大，或加进 `exclude`。
 
 ## 7. 验证
 

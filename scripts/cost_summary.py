@@ -15,15 +15,23 @@ def load_yaml(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
-def expand(p):
-    return os.path.expanduser(os.path.expandvars(str(p)))
+def expand(p, base=None):
+    """~ 与环境变量展开；相对路径按 config.yaml 所在目录解析（文档承诺的口径）。"""
+    s = os.path.expanduser(os.path.expandvars(str(p)))
+    if base and not os.path.isabs(s):
+        s = os.path.join(base, s)
+    return os.path.normpath(s)
 
 def read_ledger(home):
     p = os.path.join(home, "storages", "cost-meter", "ledger.json")
     if not os.path.isfile(p):
         return None, p
-    with open(p, encoding="utf-8") as f:
-        return json.load(f), p
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f), p
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        print(f"[skip] ledger 读不出来（可能正在写，稍后重跑）: {p}", file=sys.stderr)
+        return None, p
 
 def summarize(days, n):
     keys = sorted(days)[-n:]
@@ -57,14 +65,20 @@ def main():
     a = ap.parse_args()
 
     cfg = load_yaml(a.config) if os.path.isfile(a.config) else {}
+    base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
     homes = cfg.get("dsh_homes") or [cfg.get("dsh_home") or "~/.dsh"]
-    merged, found = {}, []
+    merged, found, seen = {}, [], set()
     for h in homes:
-        home = expand(h)
+        home = expand(h, base)
         led, p = read_ledger(home)
         if led is None:
             print(f"[skip] 没有 ledger: {p}", file=sys.stderr)
             continue
+        real = os.path.realpath(p)
+        if real in seen:
+            print(f"[skip] 同一份 ledger 已计过（按真实路径去重）: {real}", file=sys.stderr)
+            continue
+        seen.add(real)
         found.append(p)
         for k, v in (led.get("days") or {}).items():
             tgt = merged.setdefault(k, {"date": k, "input": 0, "cacheRead": 0, "cacheWrite": 0,
@@ -77,7 +91,7 @@ def main():
                 for f in ("calls", "input", "cacheRead", "cacheWrite", "output"):
                     dst[f] += int(mv.get(f) or 0)
     if not merged:
-        tried = "\n".join(f"  {expand(h)}/storages/cost-meter/ledger.json" for h in homes)
+        tried = "\n".join(f"  {expand(h, base)}/storages/cost-meter/ledger.json" for h in homes)
         sys.exit("没有可读的 ledger，查过：\n" + tried +
                  "\n刚装好的环境属正常：cost-meter 要记过几次调用才有账本，先用一天再看。"
                  "\n长期没有就改 config 里的 dsh_home。")
