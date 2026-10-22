@@ -4,7 +4,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-v0.7-2F5D8A?style=flat-square">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-191B1F?style=flat-square">
   <img alt="skills" src="https://img.shields.io/badge/skills-7-9C2B23?style=flat-square">
-  <img alt="scripts" src="https://img.shields.io/badge/scripts-5-6B6A66?style=flat-square">
+  <img alt="scripts" src="https://img.shields.io/badge/scripts-6-6B6A66?style=flat-square">
 </p>
 
 > 面向 LLM 代理的上下文成本治理方案。基于逐 step 用量日志定位开销来源，再通过配置层的结构性调整降低单位成本。
@@ -114,7 +114,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 
 这一取舍与本项目的核心主张一致：常驻项按步计费，每增加一项都是持续的固定开销。
 
-五个脚本都能单独跑：
+六个脚本都能单独跑：
 
 | 脚本 | 作用 |
 |---|---|
@@ -123,6 +123,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | `preflight.py` | 安装前查冲突：同名技能、非空记忆根、已有补丁条目 |
 | `audit_pack.py` | 包自检：结构、frontmatter、交叉引用、旧词、可移植性 |
 | `check_yaml.py` | 校验补丁 YAML，自定义标签不会误报 |
+| `gen_preset_override.py` | 从组合配置重生成 preset 覆盖块（升级后必跑，见 `docs/principles.md` P9） |
 
 ---
 
@@ -181,7 +182,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 token-governance/
   README.md  LICENSE  CHANGELOG.md  config.example.yaml
   skills/            7 个技能
-  scripts/           5 个脚本
+  scripts/           6 个脚本
   docs/              原理、实测、机制、自适应、可移植性、术语表
   clarify-needs/     姊妹项目（预发）
 ```
