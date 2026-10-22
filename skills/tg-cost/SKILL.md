@@ -27,7 +27,7 @@ description: "tg 子技能 · token 成本审计：按真实计费对账、按�
 
 快速体检：`python scripts/cost_summary.py --config config.yaml`
 
-行为观测：`python scripts/retry_patterns.py --dsh-home <home> --days 7` —— 出「换参重试」与「字面重复」两个数，只统计不拦截。2026-10-22 实测 73 个会话：换参 388 处 / 字面 6 处，说明重复主要不是完全相同的调用。
+行为观测：`python scripts/retry_patterns.py --dsh-home <home> --days 7` —— 出「换参重试」与「字面重复」两个数，只统计不拦截。2026-10-22 实测 73 个会话：换参候选 388 处，其中串内有报错的「失败重试」75 处（23 个会话），字面重复只有 6 处——重复的主体是失败后换参数再试。
 
 ## 归因口径（最容易错）
 

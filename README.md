@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.6-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-11-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.7-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-11-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -96,7 +96,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 | `new_session.py` | 新建对话夹卡片 |
 | `install_guard.py` | 安装循环守卫（默认 dry-run） |
 | `verify_guard.mjs` | 循环守卫 13 项离线断言 |
-| `retry_patterns.py` | 换参重试观测：同工具连续 ≥3 次、参数各不同的串数（只统计不拦截） |
+| `retry_patterns.py` | 换参重试观测：同工具连续 ≥3 次且参数各不同的串数，可再筛「串内有报错」的失败重试（只统计不拦截） |
 
 ## 不支持
 

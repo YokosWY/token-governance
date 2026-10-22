@@ -11,8 +11,18 @@
   - 「字面重复」= 相邻参数完全相同，用于和循环守卫的触发面对照。
 价格与归因不参与本脚本，只出次数。
 """
-import argparse, json, os, subprocess, sys, time
+import argparse, json, os, re, subprocess, sys, time
 from collections import Counter, defaultdict
+
+FAIL_EXIT = re.compile(r"\[exit code: ([1-9]\d*)\]")
+FAIL_HEAD = ("Error", "ERROR", "Traceback (most recent call last)", "ENOENT", "EACCES")
+
+
+def is_failure(text):
+    """只看硬信号：非零退出码、或以报错字样开头。命中列表里的 error 不算。"""
+    if FAIL_EXIT.search(text or ""):
+        return True
+    return (text or "").lstrip().startswith(FAIL_HEAD)
 
 
 def decompress(path):
@@ -53,6 +63,7 @@ def events(path):
 def analyze(path, min_run):
     runs = []
     cur = None
+    failed = {}
     for o in events(path):
         t = o.get("type")
         if t == "user/message":
@@ -60,16 +71,25 @@ def analyze(path, min_run):
                 runs.append(cur)
             cur = None
             continue
+        if t == "tool/result":
+            d = o.get("data") or {}
+            msg = d.get("message") or {}
+            cid = d.get("toolCallId") or (msg.get("source") or {}).get("callId")
+            if cid:
+                text = "".join(c.get("text") or "" for c in (msg.get("content") or []) if isinstance(c, dict))
+                failed[cid] = is_failure(text)
+            continue
         if t != "tool/call":
             continue
         d = o.get("data") or {}
-        name, args = d.get("name"), d.get("arguments") or ""
+        name, args, cid = d.get("name"), d.get("arguments") or "", d.get("callId")
         if cur and cur["name"] == name:
             cur["args"].append(args)
+            cur["ids"].append(cid)
         else:
             if cur:
                 runs.append(cur)
-            cur = {"name": name, "args": [args]}
+            cur = {"name": name, "args": [args], "ids": [cid]}
     if cur:
         runs.append(cur)
 
@@ -80,6 +100,7 @@ def analyze(path, min_run):
             continue
         distinct = len(set(r["args"])) == n
         adjacent_same = any(a == b for a, b in zip(r["args"], r["args"][1:]))
+        r["fails"] = sum(1 for cid in r["ids"] if failed.get(cid))
         if n >= min_run and distinct:
             retry.append(r)
         if adjacent_same:
@@ -115,7 +136,8 @@ def main():
         sys.exit(f"近 {a.days} 天没有会话文件：{root}")
 
     retry_by_tool, literal_by_tool = Counter(), Counter()
-    retry_sessions, literal_sessions = set(), set()
+    fail_by_tool = Counter()
+    retry_sessions, literal_sessions, fail_sessions = set(), set(), set()
     calls = 0
     for p in files:
         try:
@@ -128,6 +150,9 @@ def main():
         for r in retry:
             retry_by_tool[r["name"]] += 1
             retry_sessions.add(sid)
+            if r.get("fails"):
+                fail_by_tool[r["name"]] += 1
+                fail_sessions.add(sid)
         for r in literal:
             literal_by_tool[r["name"]] += 1
             literal_sessions.add(sid)
@@ -135,6 +160,7 @@ def main():
 
     retry_total = sum(retry_by_tool.values())
     literal_total = sum(literal_by_tool.values())
+    fail_total = sum(fail_by_tool.values())
     payload = {
         "window_days": a.days,
         "min_run": a.min_run,
@@ -142,6 +168,9 @@ def main():
         "retry_runs": retry_total,
         "retry_sessions": len(retry_sessions),
         "retry_by_tool": dict(retry_by_tool.most_common()),
+        "retry_after_failure_runs": fail_total,
+        "retry_after_failure_sessions": len(fail_sessions),
+        "retry_after_failure_by_tool": dict(fail_by_tool.most_common()),
         "literal_runs": literal_total,
         "literal_sessions": len(literal_sessions),
         "literal_by_tool": dict(literal_by_tool.most_common()),
@@ -153,6 +182,9 @@ def main():
     print(f"扫描 {len(files)} 个会话（近 {a.days} 天）\n")
     print(f"换参重试（同工具连续 ≥{a.min_run} 次、参数各不相同）: {retry_total} 处 / {len(retry_sessions)} 个会话")
     for name, n in retry_by_tool.most_common(5):
+        print(f"  {name:<28}{n:>4} 处")
+    print(f"  其中串内至少一次报错（失败重试）: {fail_total} 处 / {len(fail_sessions)} 个会话")
+    for name, n in fail_by_tool.most_common(5):
         print(f"  {name:<28}{n:>4} 处")
     print(f"\n字面重复（相邻参数完全相同，守卫的触发面）: {literal_total} 处 / {len(literal_sessions)} 个会话")
     for name, n in literal_by_tool.most_common(5):
