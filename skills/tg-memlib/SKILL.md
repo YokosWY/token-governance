@@ -69,7 +69,23 @@ cmd /c <ai-kb>/session-close.cmd   # ①周沉淀 ②RAG ingest ③镜像 ④改
 2. `kb_search <新关键词>` 能命中新结论（命中不了 = 没入库）；
 3. 镜像目录里有同名文件（镜像只单向派生，**不许手改镜像**）。
 
-## 失败模式（按出现频率）
+## 自动整理（三级安全，默认只做到 L1）
+
+| 级 | 命令 | 动作 |
+|---|---|---|
+| L0 只读 | `python ${TOOLS}/memlib_lint.py` | 体检 → `_digest/memlib-lint.md`，有 error 退出码 1 |
+| L1 提案 | 写 `_staging/<日期>-<短名>/{proposal.md, files/}` | 只增不改，原件不动 |
+| L2 应用 | `python ${TOOLS}/memlib_apply.py --proposal <dir> --confirm` | 快照 → 覆盖 → ingest+lint 校验 → 失败自动回滚 |
+| 回滚 | `memlib_apply.py --restore <zip>` / `--list` | 整库还原 |
+
+硬规则：
+
+- apply **只覆盖 `files/` 里列出的文件**，从不删除；拒绝写到记忆根之外。
+- 校验失败（ingest 非 0 / lint error / CORE >4096）→ 解压快照回滚，退出码 1。
+- 快照在 `_backups/memlib/`，保留 20 份；周任务自动打一份。
+- **不做**全自动改：自动判定「该删哪条」的代价比手工高。
+
+
 
 | 症状 | 原因 | 处置 |
 |---|---|---|
