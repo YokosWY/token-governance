@@ -98,10 +98,10 @@ def main():
         print(json.dumps(out, ensure_ascii=False, indent=2)); return
 
     print(f"数据源: {len(found)} 个 ledger")
-    print(f"窗口: 最近 {len(rows)} 天 | 合计 ¥{out['totals']['cny']} | {out['totals']['calls']} 次调用")
+    print(f"窗口: 最近 {len(rows)} 天 | 合计 CNY {out['totals']['cny']} | {out['totals']['calls']} 次调用")
     print(f"上下文 {total_ctx/1e9:.3f} B | 缓存命中 {out['totals']['cache_read_share']}% | "
-          f"均值 {out['totals']['avg_context_per_call']/1000:.0f} k/次 | ¥{out['totals']['cny_per_call']}/次")
-    print("\n日期         ¥      调用     平均上下文")
+          f"均值 {out['totals']['avg_context_per_call']/1000:.0f} k/次 | CNY {out['totals']['cny_per_call']}/次")
+    print("\n日期        CNY     调用     平均上下文")
     for r in rows:
         avg = (r["input"] + r["cacheRead"]) / r["calls"] if r["calls"] else 0
         print(f"{r['date']}  {r['cny']:7.2f}  {r['calls']:6d}  {avg/1000:9.0f} k")

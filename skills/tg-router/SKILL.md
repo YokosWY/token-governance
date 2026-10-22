@@ -47,9 +47,10 @@ description: "TG 总入口与技能路由。任何要控成本、要跨会话续
 本机技能多时，动手前先查而不是凭记忆挑：
 
 ```bash
-skillq <整句需求>      # 四层：域→界→集→本体（装了 skillq 才有）
-ls ${SKILLS_DIR}       # 没有 skillq 就列目录 + 读 description
+ls ${SKILLS_DIR}                             # 列目录（2026-10-22：226 个）
+grep -il "<关键词>" ${SKILLS_DIR}/*/SKILL.md  # 可选：按正文粗筛
 ```
+按目录名或 frontmatter `description` 选中后，直接 `read ${SKILLS_DIR}/<名>/SKILL.md`。
 
 命中待机技能：`skill-on <名字>` 激活，用完 `skill-off`。
 **被设了 `disable-model-invocation: true` 的技能，`skill` 工具调不到，但文件在
@@ -62,7 +63,7 @@ ls ${SKILLS_DIR}       # 没有 skillq 就列目录 + 读 description
 | 冲突 | 检测 | 该问什么 |
 |---|---|---|
 | 同名技能已存在 | `${SKILLS_DIR}/tg-router` 等路径已存在 | 覆盖 / 改名 / 跳过？ |
-| 已有路由工具 | 已有 `skillq` 或别的 router 技能 | 并存 / 让它接管 / 替换？ |
+| 已有路由工具 | 已有别的 router 技能 / 路由脚本 | 并存 / 让它接管 / 替换？ |
 | 已有记忆根 | `memory_root` 非空且不是本包创建 | 合并 / 另起目录？ |
 | 已有配置 | `config.yaml` 存在但内容不同 | 覆盖 / 保留原值 / 备份后改？ |
 | 已有补丁条目 | 目标 id 在补丁里已存在 | 合并 / 冲突项交给你手改？ |

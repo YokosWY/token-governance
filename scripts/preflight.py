@@ -50,13 +50,10 @@ def main():
             add("同名技能", p, "问：覆盖 / 改名 / 跳过")
 
     # 2. 已有 router
-    for cand in ("skill-router", "router", "skillq"):
+    for cand in ("skill-router", "router"):
         if os.path.exists(os.path.join(skills_dir, cand)):
             add("已有路由", os.path.join(skills_dir, cand), "问：并存 / 接管 / 替换")
             break
-    if shutil.which("skillq"):
-        rows.append(("已有路由工具", "PATH 中有 skillq", "可并存：tg-router 会优先用它"))
-
     # 3. 记忆根
     if os.path.isdir(memory_root) and os.listdir(memory_root):
         add("记忆根非空", f"{memory_root}（{len(os.listdir(memory_root))} 项）",

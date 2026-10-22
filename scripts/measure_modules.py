@@ -100,8 +100,10 @@ def analyze(events):
 
     cost = {m: ch * tok_per_char * blended for m, ch in acc.items()}
     cost["助手输出"] = out_tok * C_OUT
+    toks = {m: int(ch * tok_per_char) for m, ch in acc.items()}
+    toks["助手输出"] = out_tok
     return dict(steps=len(step_rows), turns=max(turns, 1), cost=cost,
-                tokens={m: int(ch * tok_per_char) for m, ch in acc.items()},
+                tokens=toks,
                 tools_bytes=tools_bytes,
                 cat_copy=(sum(cat_sizes) / len(cat_sizes)) if cat_sizes else 0,
                 out_tok=out_tok, total_ctx=total_ctx)
@@ -129,9 +131,12 @@ def main():
     path = find_session(a.dsh_home, a.session)
     if not path:
         sys.exit(f"找不到会话: {a.session}")
-    r = analyze(load_events(path))
+    events = load_events(path)
+    if not events:
+        sys.exit(f"会话文件里没有可解析事件（zstd 解压失败或文件被截断）: {path}")
+    r = analyze(events)
     if not r:
-        sys.exit("该会话没有 usage 记录")
+        sys.exit("该会话没有 usage 记录（刚开始的会话或没有 assistant 步）")
     total = sum(r["cost"].values())
 
     if a.json:
@@ -140,16 +145,16 @@ def main():
         return
 
     print(f"会话 {os.path.basename(os.path.dirname(path))}")
-    print(f"步={r['steps']} 轮={r['turns']} 总¥={total:.3f} 每轮¥={total/r['turns']:.4f} "
+    print(f"步={r['steps']} 轮={r['turns']} 总CNY={total:.3f} 每轮CNY={total/r['turns']:.4f} "
           f"上下文={r['total_ctx']/1e6:.1f}M 输出={r['out_tok']/1e3:.0f}k")
     print(f"schema={r['tools_bytes']}B 目录单条={r['cat_copy']:.0f}B")
     if a.cf_schema or a.cf_catalog:
         cf, fs, fc = counterfactual(r, a.cf_schema, a.cf_catalog)
         lo, hi = min(total, cf), max(total, cf)
-        print(f"本会话 ¥{total:.3f}（¥{total/r['turns']:.4f}/轮）"
-              f" | 对照 ¥{cf:.3f}（¥{cf/r['turns']:.4f}/轮）"
+        print(f"本会话 CNY {total:.3f}（CNY {total/r['turns']:.4f}/轮）"
+              f" | 对照 CNY {cf:.3f}（CNY {cf/r['turns']:.4f}/轮）"
               f" | 差 {abs(total-cf)/hi*100:.1f}%（schema×{fs:.2f} 目录×{fc:.2f}）")
-    print(f"\n{'模块':<14}{'tokens':>12}{'¥':>10}{'占%':>8}{'¥/轮':>10}")
+    print(f"\n{'模块':<14}{'tokens':>12}{'CNY':>10}{'占%':>8}{'CNY/轮':>10}")
     for m, c in sorted(r["cost"].items(), key=lambda x: -x[1]):
         print(f"{m:<14}{r['tokens'].get(m,0)/1e6:>10.2f}M{c:>10.4f}{c/total*100:>7.1f}%{c/r['turns']:>10.4f}")
 

@@ -33,7 +33,7 @@
 2. **Memos 连接器**：别人未必装；`tg-cost` 不依赖它。
 3. **cua preset 的包名**：`<vendor>/computer-use*` 因发行版而异。
 4. **AI 知识库结构**（`AI-KB/memory/*.md` 五件套 + Obsidian 镜像）：个人库约定，不通用。
-5. **技能路由工具 `skillq` / `skillctl`**：自研 CLI，别人可能没有 → 技能里已给 `ls` 降级路径。
+5. **技能路由**：不再依赖外部 CLI（旧路由工具已于 2026-10-22 下线）→ 只用 `tg-router` 五域表 + `ls`/`read`，`skillctl` 仍管激活/停用。
 6. **某些技能是软链（symlink）**：Windows 上需要开发者模式或管理员；跨机器建议直接复制实体目录。
 7. **ACL 收紧的具体账户名**：`<COMPUTERNAME>\<USER>` 因机器而异。
 8. **中文生态依赖**（思源笔记、AnySearch MCP 等）：与本包无关，不写进默认流程。

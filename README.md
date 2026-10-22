@@ -1,10 +1,10 @@
 # Token-Governance (TG) · 词元掌控
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-v0.7-2F5D8A?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.10-2F5D8A?style=flat-square">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-191B1F?style=flat-square">
-  <img alt="skills" src="https://img.shields.io/badge/skills-7-9C2B23?style=flat-square">
-  <img alt="scripts" src="https://img.shields.io/badge/scripts-6-6B6A66?style=flat-square">
+  <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
+  <img alt="scripts" src="https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square">
 </p>
 
 > 面向 LLM 代理的上下文成本治理方案。基于逐 step 用量日志定位开销来源，再通过配置层的结构性调整降低单位成本。
@@ -98,7 +98,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 
 ## 4. 里面有什么
 
-九个技能中仅路由层常驻，其余按需启用：
+十个技能中仅路由层常驻，其余按需启用：
 
 | 技能 | 管什么 | 常驻 |
 |---|---|---|
@@ -113,7 +113,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 | `tg-ops` | 补丁分层、备份、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫：同一调用重复时的提醒与止损 | 待机 |
 
-其余八项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
+其余九项标记为待机（`disable-model-invocation: true`）：模型侧不可见，但文件仍位于 `${SKILLS_DIR}/<名>/SKILL.md`，可直接读取或经 `/名字` 调用。
 
 这一取舍与本项目的核心主张一致：常驻项按步计费，每增加一项都是持续的固定开销。
 
@@ -194,7 +194,7 @@ python tg/scripts/preflight.py --config tg/config.yaml
 ```
 token-governance/
   README.md  LICENSE  CHANGELOG.md  config.example.yaml
-  skills/            9 个技能
+  skills/            10 个技能
   scripts/           10 个脚本（含循环守卫的安装与自检）
   plugins/dsh-loop-guard/   循环守卫插件源码（与上游字节一致）
   docs/              原理、实测、机制、自适应、可移植性、术语表
@@ -265,6 +265,7 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 
 | 版本 | 内容 |
 |---|---|
+| v0.10 | 新增 `tg-memlib`：CORE 永久层、分级提炼、晋升/降级、冲突覆盖；技能 9 → 10 |
 | v0.9 | 新增 `tg-isolate`：高费低频工具隔离的通用模板（询问后安装，预设骨架自带上） |
 | v0.8 | 接入循环守卫：插件源码 + `tg-loop` 技能 + 安装/自检脚本 + `docs/guard.md` |
 | v0.7 | 首次发布；收录 clarify-needs（预发）；LICENSE 定为 MIT |
@@ -291,3 +292,4 @@ python scripts/audit_pack.py --also clarify-needs     # 顺带查姊妹项目
 | `glossary.md` | 全部自造词的详细解释，含容易混的词对照 |
 | `mechanisms.md` | 六个自研机制：解决什么、怎么运作、怎么验证、何时失效 |
 | `guard.md` | 循环守卫：事件点、阈值语义、与 AGENTS 规则的分工、已知限制 |
+| `design.md` | 色板与版式：纸 / 墨 / 账簿蓝 / 印章红 |

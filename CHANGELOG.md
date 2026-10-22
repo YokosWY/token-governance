@@ -3,11 +3,17 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.1 — 2026-10-22（数据脚本 Windows 控制台修复 + 实测记录）
+- `cost_summary.py` / `measure_modules.py`：`¥` 改 `CNY`，Windows 默认 GBK 控制台不再抛 `UnicodeEncodeError`（此前第一次跑体检直接崩，退出码 1；v0.7.9 只修了 `audit_pack.py`）
+- `measure_modules.py`：模块表「助手输出」tokens 列恒为 `0.00M`（`tokens` 字典只含上下文模块）→ 补 `out_tok`，与费用占比自洽
+- `measure_modules.py`：错误信息区分「文件无可解析事件（zstd 失败/截断）」与「无 usage 记录」
+- 实测（真实 ledger，`${DSH_HOME}` 下 cost-meter）：8 天 271.02 CNY / 10999 次；`byProviderModel` token 和与日合计差 0；高价日 10-18 可由 `workbuddy-ai:gpt-6-astra` 66 次 / 101.00 CNY 解释
+
 ## v0.10.0 — 2026-10-22（长期记忆库分层）
 - 新增 `skills/tg-memlib/`：CORE 永久层（≤4KB，每次必读）+ INDEX 路由 + 分级提炼判据 + 手工晋升/降级 + 冲突覆盖写法 + 收尾入库链与三项验收
 - 与 `tg-memory` 明确分工：短期对话夹 vs 跨会话长期/永久
 - 关键取舍：**不做 tier 字段、自动晋升、时间衰减**——无引用计数埋点，自动判定会误升误删；先人工跑顺，有埋点再谈
-- `tg-router` 五域表、`README` 技能表/场景表/目录结构登记（8 → 9 个技能）
+- `tg-router` 五域表、`README` 技能表/场景表/目录结构登记（9 → 10 个技能）
 - 移植安全：路径全用 `${MEMLIB_ROOT}` 占位符，正文不含本机绝对路径
 
 ## v0.9.0 — 2026-10-22（高费低频工具隔离模板）
