@@ -1,0 +1,10 @@
+{"type":"session","version":4,"id":"session-fixture-baseline","createdAt":0}
+{"type":"request/header","seq":1,"data":{"header":{"tools":[{"name":"a"},{"name":"b"},{"name":"c"}]}}}
+{"type":"user/message","seq":2,"data":{"message":{"content":[{"type":"text","text":"<available_skills>\n- x\n- y\n- z\n</available_skills>"}]}}}
+{"type":"assistant/message","seq":3,"data":{"usage":{"inputTokens":4000,"cacheReadTokens":40000,"outputTokens":300}}}
+{"type":"assistant/message","seq":4,"data":{"usage":{"inputTokens":500,"cacheReadTokens":44000,"outputTokens":300}}}
+{"type":"assistant/message","seq":5,"data":{"usage":{"inputTokens":500,"cacheReadTokens":44500,"outputTokens":300}}}
+{"type":"user/message","seq":6,"data":{"message":{"content":[{"type":"text","text":"继续"}]}}}
+{"type":"assistant/message","seq":7,"data":{"usage":{"inputTokens":600,"cacheReadTokens":45000,"outputTokens":300}}}
+{"type":"assistant/message","seq":8,"data":{"usage":{"inputTokens":600,"cacheReadTokens":45500,"outputTokens":300}}}
+{"type":"assistant/message","seq":9,"data":{"usage":{"inputTokens":600,"cacheReadTokens":46000,"outputTokens":300}}}

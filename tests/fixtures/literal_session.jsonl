@@ -1,0 +1,9 @@
+{"type":"session","version":4,"id":"session-fixture-literal","createdAt":0}
+{"type":"request/header","seq":1,"data":{"header":{"tools":[{"name":"a"}]}}}
+{"type":"user/message","seq":2,"data":{"message":{"content":[{"type":"text","text":"<available_skills>\n- x\n</available_skills>"}]}}}
+{"type":"assistant/message","seq":3,"data":{"usage":{"inputTokens":800,"cacheReadTokens":8000,"outputTokens":100}}}
+{"type":"tool/call","seq":4,"data":{"name":"ops_bash","arguments":"{\"command\":\"echo hi\",\"description\":\"same\"}","callId":"c1"}}
+{"type":"tool/result","seq":5,"data":{"message":{"source":{"kind":"tool","callId":"c1"},"content":[{"type":"text","text":"hi"}]}}}
+{"type":"assistant/message","seq":6,"data":{"usage":{"inputTokens":800,"cacheReadTokens":8200,"outputTokens":100}}}
+{"type":"tool/call","seq":7,"data":{"name":"ops_bash","arguments":"{\"command\":\"echo hi\",\"description\":\"same\"}","callId":"c2"}}
+{"type":"tool/result","seq":8,"data":{"message":{"source":{"kind":"tool","callId":"c2"},"content":[{"type":"text","text":"hi"}]}}}

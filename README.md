@@ -1,8 +1,8 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.10-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-13-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.12-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-14-6B6A66?style=flat-square)](scripts)
 
-TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、13 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
+TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、14 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
 它不改模型单价，只做两件事：用逐 step 用量日志把开销拆到模块，再改配置让每步重发的那部分变小。
 
@@ -17,7 +17,9 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 
 ## 实测
 
-逐 step 重放真实会话日志。价格 input $0.15 / cacheRead $0.003 / output $0.6 每百万 token，汇率 7.1。改前取 3 个长会话（492 / 333 / 764 步），改后取 7 个新会话（53–126 步）。
+逐 step 重放真实会话日志。价格 input $0.15 / cacheRead $0.003 / output $0.6 每百万 token，汇率 7.1。
+
+<!-- metrics:begin -->
 
 | 指标 | 改前 | 改后 | 变化 |
 |---|---:|---:|---:|
@@ -28,6 +30,10 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 | 未命中 input / 步 | 3,697 | 1,204 | −67.4% |
 | 缓存命中率 | 98.9% | 99.2% | +0.3 pp |
 | 裁剪 / 压缩次数 | 4–12 / 3–12 | 0 / 0 | −100% |
+
+> 数字来源 `data/metrics.json`（更新 2026-10-22）。单机、deepseek-flash、200 k 窗口。改前 = 3 个长会话（492/333/764 步），改后 = 7 个新会话（53–126 步）。
+
+<!-- metrics:end -->
 
 同一会话代回旧参数重放，每轮再降 30–39%。这是下限：反事实只替换 schema 与目录体积，没有模拟旧配置下裁剪与压缩造成的前缀重算。
 
@@ -95,7 +101,8 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 | `compare_days.py` | 按天对比单价、上下文、未命中、输出 |
 | `baseline.py` | 首日基线：记起始上下文/schema/目录，隔天 `--compare` 对比 |
 | `preflight.py` | 安装前查冲突，含覆盖块与插件名漂移 |
-| `audit_pack.py` | 包自检：结构、引用、旧词、可移植性 |
+| `audit_pack.py` | 包自检：结构、引用、旧词、可移植性；并校验文档数字 |
+| `gen_metrics.py` | 数字单源：从 `data/metrics.json` 生成/校验 README 与 benchmark 的表格块 |
 | `check_yaml.py` | 校验补丁 YAML |
 | `gen_preset_override.py` | 升级后重生成 preset 覆盖块 |
 | `new_session.py` | 新建对话夹卡片 |
@@ -122,6 +129,8 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 - 其余在 `docs/`：`mechanisms.md` 六个机制、`adaptation.md` 换环境降级、`portable-vs-local.md` 可移植边界、`glossary.md` 术语、`design.md` 色板
 
 ## 贡献
+
+回归测试：`python tests/run_tests.py`（11 项，纯标准库，不需要 pytest）。
 
 先读 [`CONTRIBUTING.md`](CONTRIBUTING.md)：提交类型、表述规范、破坏性操作的前置检查。问题走 Issues，改动附复现命令与实测数字。
 

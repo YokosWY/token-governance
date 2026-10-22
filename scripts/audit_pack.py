@@ -5,7 +5,7 @@
   python audit_pack.py                    # 只查本包（脚本所在项目）
   python audit_pack.py --also <另一项目>
 """
-import argparse, os, re, sys
+import argparse, os, re, subprocess, sys
 
 STALE = ["Metron", "Tessera", "metron", "tessera", "tg-guard", "metron-", "90% 规则"]
 
@@ -108,6 +108,14 @@ def main():
     for extra in a.also:
         n2 = check(os.path.basename(extra.rstrip("\\/")).upper(), extra, issues)
         print(f"{os.path.basename(extra)}: {extra}  （{n2} 个文件）")
+
+    # 数字单一真相：文档表格必须与 data/metrics.json 一致
+    gm = os.path.join(a.root, "scripts", "gen_metrics.py")
+    if os.path.isfile(gm):
+        r = subprocess.run([sys.executable, gm, "--check", "--root", a.root],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            issues.append(("TG", "中", "文档数字与 data/metrics.json 不一致（跑 gen_metrics.py --write）"))
 
     print()
     if not issues:

@@ -12,8 +12,12 @@ def load_yaml(path):
         import yaml
     except ImportError:
         sys.exit("需要 pyyaml：pip install pyyaml")
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        sys.exit(f"{path} 不是合法 YAML（{str(e).splitlines()[0]}）。"
+                 "Windows 路径用正斜杠或单引号，别在双引号里写反斜杠。")
 
 def expand(p, base=None):
     """~ 与环境变量展开；相对路径按 config.yaml 所在目录解析（文档承诺的口径）。"""

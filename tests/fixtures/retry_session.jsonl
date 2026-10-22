@@ -1,0 +1,11 @@
+{"type":"session","version":4,"id":"session-fixture-retry","createdAt":0}
+{"type":"request/header","seq":1,"data":{"header":{"tools":[{"name":"a"},{"name":"b"}]}}}
+{"type":"user/message","seq":2,"data":{"message":{"content":[{"type":"text","text":"<available_skills>\n- x\n- y\n</available_skills>"}]}}}
+{"type":"assistant/message","seq":3,"data":{"usage":{"inputTokens":1000,"cacheReadTokens":9000,"outputTokens":200}}}
+{"type":"tool/call","seq":4,"data":{"name":"ops_bash","arguments":"{\"command\":\"a\",\"description\":\"d1\"}","callId":"c1"}}
+{"type":"tool/result","seq":5,"data":{"message":{"source":{"kind":"tool","callId":"c1"},"content":[{"type":"text","text":"[exit code: 1]"}]}}}
+{"type":"tool/call","seq":6,"data":{"name":"ops_bash","arguments":"{\"command\":\"b\",\"description\":\"d2\"}","callId":"c2"}}
+{"type":"tool/result","seq":7,"data":{"message":{"source":{"kind":"tool","callId":"c2"},"content":[{"type":"text","text":"ok"}]}}}
+{"type":"tool/call","seq":8,"data":{"name":"ops_bash","arguments":"{\"command\":\"c\",\"description\":\"d3\"}","callId":"c3"}}
+{"type":"tool/result","seq":9,"data":{"message":{"source":{"kind":"tool","callId":"c3"},"content":[{"type":"text","text":"ok"}]}}}
+{"type":"assistant/message","seq":10,"data":{"usage":{"inputTokens":500,"cacheReadTokens":9500,"outputTokens":300}}}

@@ -19,8 +19,15 @@ def load_yaml(path):
     if not os.path.isfile(path):
         return {}
     import yaml as y
-    with open(path, encoding="utf-8") as f:
-        return y.safe_load(f) or {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return y.safe_load(f) or {}
+    except y.YAMLError as e:
+        first = str(e).splitlines()[0]
+        print(f"拒绝：{path} 不是合法 YAML（{first}）。\n"
+              "Windows 路径请用正斜杠 C:/Users/... 或单引号 'C:\\Users\\...'；"
+              "双引号里的反斜杠会被当成转义。", file=sys.stderr)
+        sys.exit(2)
 
 
 def expand(p, base=None):

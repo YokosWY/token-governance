@@ -3,7 +3,14 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
-## v0.10.10 — 2026-10-22（预检加缓存体检）
+## v0.10.12 — 2026-10-22（P0：回归测试 + 数字单源）
+- 新增 `tests/run_tests.py` + `tests/fixtures/`：11 项断言（解压回退、计价与手算一致、外来日志拒绝、换参/失败重试口径、插件名漂移、首日基线可写可比、文档数字一致、包自检），纯标准库，不需要 pytest
+- 新增 `data/metrics.json` + `scripts/gen_metrics.py`：README 与 `benchmark.md` §9.5 的汇总表由 json 生成（`--write`），`--check` 由 `audit_pack.py` 调用；手改文档数字会被抓出（已做变异测试：改一个数字 → 测试红）
+- `audit_pack.py` 增加数字一致性检查；`README` 补测试入口与脚本表
+- 修 Windows 配置崩溃：`config.yaml` 里写 `C:\Users\...`（双引号）会让 YAML 解析抛栈；`preflight.py` / `cost_summary.py` 现在给一行可操作提示并以退出码 2 结束
+- 版本号整理：另一个会话的「预检加缓存体检」原写成 v0.10.10（与已发布 tag 撞号），改为 v0.10.11
+
+## v0.10.11 — 2026-10-22（预检加缓存体检）
 - `preflight.py` 新增第 8 项**只读缓存体检**：读账本算命中率、未命中/步、每步上下文、价差 k、未命中成本占比，给三档判定（值得做 → 关自动改写历史 / 边际 → 缩前缀与步数 / 不值得做 → 价差太小）
 - 体检**不参与冲突计数、不改退出码**；无账本降级为「正常用一天再看 / `cache_audit.py --jsonl`」；异常只打一行「跳过」，不阻断预检
 - 复用 `cache_audit.collect_ledgers`（多 home 合并 + 真实路径去重），阈值与 `docs/cache-hit.md` §2 同源
