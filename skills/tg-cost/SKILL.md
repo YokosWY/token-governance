@@ -23,9 +23,11 @@ description: "tg 子技能 · token 成本审计：按真实计费对账、按�
 | `${DSH_HOME}/storages/cost-meter/ledger.json` | 真实计费：按天 / provider:model / 会话 |
 | `${DSH_HOME}/sessions/<cwd>/session-*/session.v4.jsonl.zstd` | 逐 step usage + 内容，用于归因 |
 
-多套 DSH → 分别跑，再合并（注意不要重复计同一会话）。
+多套 DSH → 分别跑，再合并（同一份 ledger 按真实路径只算一次）。
 
 快速体检：`python scripts/cost_summary.py --config config.yaml`
+
+行为观测：`python scripts/retry_patterns.py --dsh-home <home> --days 7` —— 出「换参重试」与「字面重复」两个数，只统计不拦截。2026-10-22 实测 73 个会话：换参 388 处 / 字面 6 处，说明重复主要不是完全相同的调用。
 
 ## 归因口径（最容易错）
 
