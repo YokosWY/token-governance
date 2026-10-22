@@ -47,7 +47,7 @@ description: "TG 总入口与技能路由。任何要控成本、要跨会话续
 本机技能多时，动手前先查而不是凭记忆挑：
 
 ```bash
-ls ${SKILLS_DIR}                             # 列目录（2026-10-22：226 个）
+ls ${SKILLS_DIR}                             # 列目录（本机 226 个，数量随机器变）
 grep -il "<关键词>" ${SKILLS_DIR}/*/SKILL.md  # 可选：按正文粗筛
 ```
 按目录名或 frontmatter `description` 选中后，直接 `read ${SKILLS_DIR}/<名>/SKILL.md`。
@@ -88,7 +88,7 @@ python scripts/preflight.py --config config.yaml
 ## 步数纪律（2026-10-22 实测）
 
 账单大头是「步数 × 每步上下文」，不是答案长度：8 天 10,150 步，cacheRead 占 43.7%、
-output 27.4%，而 output 里推理占 45–49%、工具参数 41–46%、可见正文 7–14%。
+output 27.4%，而 output 里推理占 45–49%、工具参数 41–46%、可见正文 7–14%（本机样本，比例可参考，绝对值随机器变）。
 
 1. 一条命令合并多件事；只有互不依赖的只读命令才值得分开。
 2. 大文件先 grep 定位行号，再 `read offset/limit`，不整文件读。
