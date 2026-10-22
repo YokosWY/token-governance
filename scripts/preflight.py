@@ -75,6 +75,8 @@ def main():
     if os.path.isdir(dsh_home):
         prof_dir = os.path.join(dsh_home, "profiles")
         for prof in (os.listdir(prof_dir) if os.path.isdir(prof_dir) else []):
+            if ".bak" in prof or prof.endswith("-backup") or prof.startswith("backup"):
+                continue  # 备份目录，不是生效配置
             pp = os.path.join(dsh_home, "profiles", prof, "cordis.patch.yml")
             if not os.path.isfile(pp):
                 continue
@@ -90,17 +92,17 @@ def main():
     if os.path.isdir(dsh_home):
         prof_dir = os.path.join(dsh_home, "profiles")
         for prof in (os.listdir(prof_dir) if os.path.isdir(prof_dir) else []):
+            if ".bak" in prof or prof.endswith("-backup") or prof.startswith("backup"):
+                continue  # 备份目录，不是生效配置
             pp = os.path.join(dsh_home, "profiles", prof, "cordis.patch.yml")
             cp = os.path.join(dsh_home, "profiles", prof, "cordis.yml")
             if not (os.path.isfile(pp) and os.path.isfile(cp)):
                 continue
             import re
             covered = set(re.findall(r"^\s*-\s*id:\s*(preset-\S+)", open(pp, encoding="utf-8", errors="ignore").read(), re.M))
-            if not covered:
-                continue
             actual = set(re.findall(r"^\s*-\s*id:\s*(preset-\S+)", open(cp, encoding="utf-8", errors="ignore").read(), re.M))
             gone = sorted(covered - actual)
-            extra = sorted(actual - covered)
+            extra = sorted(actual - covered) if covered else []
             if gone:
                 add("覆盖块漂移", f"{prof}: 覆盖了已不存在的 {', '.join(gone)}", "升级后重跑 gen_preset_override.py")
             if extra:
@@ -113,6 +115,40 @@ def main():
             if lost:
                 add("插件名漂移", f"{prof}: {', '.join(lost[:4])} 不在组合文件里", "升级可能删/改名了插件，先看启动日志再改 patch")
 
+    # 8. 缓存体检（只读，不计入冲突、不改退出码）
+    cache_line = None
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from types import SimpleNamespace
+        from cache_audit import collect_ledgers
+        prices = cfg.get("prices_usd_per_mtok") or {}
+        p_in = float(prices.get("input") or 0.15)
+        p_cache = float(prices.get("cached") or 0.003)
+        merged, _found = collect_ledgers(SimpleNamespace(config=a.config, home=None, ledger=None))
+        if merged:
+            keys = sorted(merged)[-7:]
+            tin = sum(merged[k]["input"] for k in keys)
+            tc = sum(merged[k]["cacheRead"] for k in keys)
+            calls = sum(merged[k]["calls"] for k in keys)
+            ctx = tin + tc
+            hit = tc / ctx if ctx else 0.0
+            miss = tin / calls if calls else 0.0
+            k = p_in / p_cache if p_cache else 0.0
+            mshare = (tin * p_in) / (tin * p_in + tc * p_cache) if ctx else 0.0
+            if k >= 8 and miss > 800:
+                verdict = "值得做 → 先停自动改写历史（关 pruner），再用 cache_audit 看 3 天"
+            elif k >= 3:
+                verdict = "边际 → 先缩前缀与步数（tg-context），别追命中率"
+            else:
+                verdict = "不值得做 → 价差太小，命中率再高也省不到 3%"
+            cache_line = (f"命中率 {hit * 100:.1f}% | 未命中 {miss:.0f}/步 | "
+                          f"每步上下文 {ctx / calls / 1000:.0f}k | k={k:.1f} | "
+                          f"未命中占成本 {mshare * 100:.0f}% → {verdict}")
+        else:
+            cache_line = "无账本：正常用一天再看；或 python scripts/cache_audit.py --jsonl <会话日志>"
+    except Exception as e:  # 体检失败不影响预检
+        cache_line = f"跳过（{e.__class__.__name__}: {e}）"
+
     # 准入判定：放行 0 / 待确认 1 / 拒绝 2
     blocked = not os.path.isdir(skills_dir)
     # 输出
@@ -123,6 +159,8 @@ def main():
         sys.exit(2)
     if not rows:
         print("判定：放行（退出码 0）。")
+        if cache_line:
+            print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
         return
     w1 = max(len(r[0]) for r in rows) + 2
     w2 = min(60, max(len(r[1]) for r in rows) + 2)
@@ -130,7 +168,11 @@ def main():
         print(f"  {k:<{w1}} {d[:w2]:<{w2}} → {act}")
     if conflicts:
         print(f"判定：待确认（退出码 1）。{conflicts} 项冲突，逐项裁决后再动手。")
+        if cache_line:
+            print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
         sys.exit(1)
+    if cache_line:
+        print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
     print("\n判定：放行（退出码 0），按提示补齐即可。")
 
 
