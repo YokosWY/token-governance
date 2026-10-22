@@ -1,8 +1,8 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.13-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-17-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.14-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
 
-TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、17 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
+TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、18 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
 它不改模型单价，只做两件事：用逐 step 用量日志把开销拆到模块，再改配置让每步重发的那部分变小。
 
@@ -109,6 +109,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 | `turn_cost.py` | 任务成本：按用户指令切轮，出每轮 CNY / 步数 / 失败调用，含中位、均值、P90 |
 | `skill_usage.py` | 技能埋点：`skill` 工具与 `/名字` 各调了几次，哪些 tg-* 从未用过 |
 | `patch_snapshot.py` | 补丁快照/回滚：`--snapshot` / `--list` / `--restore latest` / `--diff` |
+| `failure_analysis.py` | 失败重试分析：失败调用数、受影响轮次与花费占比、Top 报文分类 |
 | `install_guard.py` | 安装循环守卫（默认 dry-run） |
 | `verify_guard.mjs` | 循环守卫 13 项离线断言 |
 | `retry_patterns.py` | 换参重试观测：同工具连续 ≥3 次且参数各不同的串数，可再筛「串内有报错」的失败重试（只统计不拦截） |
@@ -133,7 +134,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 
 ## 贡献
 
-回归测试：`python tests/run_tests.py`（18 项，纯标准库，不需要 pytest）。
+回归测试：`python tests/run_tests.py`（21 项，纯标准库，不需要 pytest）。
 
 先读 [`CONTRIBUTING.md`](CONTRIBUTING.md)：提交类型、表述规范、破坏性操作的前置检查。问题走 Issues，改动附复现命令与实测数字。
 

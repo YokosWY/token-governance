@@ -177,7 +177,17 @@ def main():
     check("快照可拍", r1.returncode == 0 and "已拍快照" in r1.stdout)
     check("回滚恢复内容", r2.returncode == 0 and restored.strip() == "- id: a")
 
-    # 10. 数字单源
+    # 10. 失败重试分析
+    r = run("failure_analysis.py", "--dsh-home", home, "--days", "1", "--json")
+    try:
+        fa = json.loads(r.stdout)
+    except Exception:
+        fa = {}
+    check("失败调用被统计", fa.get("failed_calls") == 1, str(fa.get("failed_calls")))
+    check("失败工具归类", (fa.get("by_tool") or {}).get("ops_bash") == 1, str(fa.get("by_tool")))
+    check("失败轮次被统计", fa.get("turns_with_failure") == 1, str(fa.get("turns_with_failure")))
+
+    # 11. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
 
