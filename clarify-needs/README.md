@@ -127,16 +127,16 @@ clarify-needs/
   README.md           本文件
   CHANGELOG.md        v1.0 → v2.1
   docs/
-    design.md         设计取舍：为什么 4 档、为什么合并 grill、95% 怎么定义
+    （设计取舍见 README 第 7 节）
     roadmap.md        以后升级方向（含 v3 的"返工率指标"）
   _history/           旧版 SKILL.md 备份
 ```
 
-档位、前沿、共识摘要这些词的完整解释，在仓库根目录的 docs/glossary.md。
+档位、前沿、共识摘要这些词的完整解释，在仓库根目录的 docs/concepts.md。
 
 ---
 
-## 7. 设计取舍（详见 `docs/design.md`）
+## 7. 设计取舍（详见本节）
 
 | 决定 | 理由 |
 |---|---|

@@ -32,7 +32,7 @@ description: "tg 子技能 · 上下文工程：工具清单/技能目录/工具
 `k = 入价 / 缓存价`，k=2 时未命中只值个位数百分比，k=50 时能占到上下文成本约 40%。
 
 打穿前缀的 7 个来源（自动裁剪、压缩、改配置、新会话、换模型、TTL、显式缓存过期）、三个公式、
-各客户端映射与无账本测法，见 `docs/cache-hit.md`。一条命令体检：`python scripts/cache_audit.py`。
+各客户端映射与无账本测法，见 `docs/benchmark.md` 第十节。一条命令体检：`python scripts/cache_audit.py`。
 
 ## 压缩的真实经济学（结论：不产生净收益）
 

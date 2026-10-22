@@ -199,7 +199,7 @@ def diagnose(t, k, window):
     if k < 3:
         tips.append(f"价差 k={k:.1f}：即使把未命中打到 0，省的也不到 {min(90, int(100 / k))}% 的上下文成本 → 优先级最低。")
     if miss_per_call > 3000:
-        tips.append(f"未命中 {miss_per_call:.0f}/步，偏高：怀疑有自动裁剪或压缩在改写历史（见 cache-hit.md §3 第 1、2 条）。")
+        tips.append(f"未命中 {miss_per_call:.0f}/步，偏高：怀疑有自动裁剪或压缩在改写历史（见 docs/benchmark.md 第十节）。")
     elif miss_per_call > 1500:
         tips.append(f"未命中 {miss_per_call:.0f}/步：先查最近有没有改配置/换模型/切通道，再看 3 天趋势。")
     if hit < 0.95 and total_ctx:

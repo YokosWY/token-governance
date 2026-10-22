@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.15-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.16-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、18 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -126,12 +126,13 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 
 ## 文档
 
-- [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字
+- [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字；第十节是缓存命中（provider 无关）
 - [`docs/principles.md`](docs/principles.md)：十二条原理与阈值推导
-- [`docs/guard.md`](docs/guard.md)：循环守卫的事件点、参数哈希与已知限制
-- [`docs/protocol.md`](docs/protocol.md)：改文件前的三条硬规则（协议错误占失败调用 27.5%）
-- [`docs/cache-hit.md`](docs/cache-hit.md)：缓存命中（provider 无关）：三类缓存、价差倍数 k、打穿前缀的 7 个来源
-- 其余在 `docs/`：`mechanisms.md` 六个机制、`adaptation.md` 换环境降级、`portable-vs-local.md` 可移植边界、`glossary.md` 术语、`design.md` 色板
+- [`docs/operations.md`](docs/operations.md)：循环守卫与协议纪律（协议错误占失败调用 27.5%）
+- [`docs/concepts.md`](docs/concepts.md)：全部自造词 + 六个机制
+- [`docs/adaptation.md`](docs/adaptation.md)：换机器、换客户端、没有账本时怎么降级
+
+读法：评估者看「实测」；使用者看「安装」与「快速开始」；贡献者看「贡献」。其余细节都在 `docs/`，一页一个主题。
 
 ## 贡献
 

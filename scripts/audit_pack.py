@@ -72,10 +72,12 @@ def check(label, root, issues):
             for w in STALE:
                 if w in body:
                     issues.append((label, "中", f"陈旧词 '{w}' 出现在 {rel}"))
-        for ref in re.findall(r"`(docs/[A-Za-z0-9_\-./]+|scripts/[A-Za-z0-9_\-./]+)`", s):
-            here = os.path.dirname(f)
-            if not (os.path.exists(os.path.join(here, ref)) or os.path.exists(os.path.join(root, ref))):
-                issues.append((label, "中", f"{rel} 引用不存在的 {ref}"))
+        # CHANGELOG 是历史：条目里提旧文件名属当时事实，不追改（合并见 v0.10.16）
+        if base != "CHANGELOG.md":
+            for ref in re.findall(r"`(docs/[A-Za-z0-9_\-./]+|scripts/[A-Za-z0-9_\-./]+)`", s):
+                here = os.path.dirname(f)
+                if not (os.path.exists(os.path.join(here, ref)) or os.path.exists(os.path.join(root, ref))):
+                    issues.append((label, "中", f"{rel} 引用不存在的 {ref}"))
         local_ids = [v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
                                  os.environ.get("COMPUTERNAME")) if v and len(v) > 2]
         if local_ids and any(v in s for v in local_ids):

@@ -3,6 +3,14 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.16 — 2026-10-22（P2-b：文档收敛 11 → 5）
+- 合并：`glossary.md` + `mechanisms.md` → `concepts.md`；`guard.md` + `protocol.md` → `operations.md`；`portable-vs-local.md` 并入 `adaptation.md` 附录；`cache-hit.md` 并入 `benchmark.md` 第十节
+- 归档：`design.md`（色板与版式）→ `_history/design-20261022.md`，不在 `docs/` 露出
+- 结果：`docs/` 只剩 5 篇（benchmark / principles / operations / concepts / adaptation），README 文档段加「评估者 / 使用者 / 贡献者」三行读法
+- 引用全部改指新文件：README、`skills/tg-context`、`skills/tg-loop`、`skills/tg-ops`、`clarify-needs/README.md`、`scripts/cache_audit.py`
+- `audit_pack.py`：文档引用检查跳过 `CHANGELOG.md`（历史条目提旧名属当时事实），其余文件仍严格校验
+- 验收：`audit_pack` 0 问题、测试 23/23、`gen_metrics --check` 通过
+
 ## v0.10.15 — 2026-10-22（P2-a：协议纪律）
 - 新增 `docs/protocol.md`：改文件前 30 秒的三条硬规则（改前必读、一次一个文件、工具名对照清单）+ 清单 + 自检命令
 - `failure_analysis.py` 新增 `--protocol-only`：只列 `file has not been read` / `file changed since it was read` / `old_string/new_string` / `unknown tool` 四类。本机近 3 天：协议错误 **65 次 / 236 次失败（27.5%）**，其中 edit 44、write 14、未知工具 7（含把工具名打成 `opt_bash`）

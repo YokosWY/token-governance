@@ -44,7 +44,7 @@ python scripts/check_yaml.py cordis.patch.yml
 
 改坏了：`python scripts/patch_snapshot.py --restore latest`，重启生效。回滚前脚本会先备份当前文件。
 
-动手前先过 `docs/protocol.md` 的四条清单——协议错误（没读就改、并行改同一文件、臆造工具名）占失败调用 27.5%。
+动手前先过 `docs/operations.md` 第二节的清单——协议错误（没读就改、并行改同一文件、臆造工具名）占失败调用 27.5%。
 
 ## 升级后检查清单
 
