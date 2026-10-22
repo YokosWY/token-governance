@@ -51,6 +51,7 @@ return { ...downstream, additionalContexts: [reminder, ...existing] }
 4. 追加提醒占上下文；阈值低于 2 会明显变吵。
 5. 与其它「重复工具提醒」类插件（例如 `dsh-repeat-tool-reminder`）同时安装会重复提醒；只保留一个。
 6. 提醒消息里会带参数预览，默认 `argumentsPreviewChars: 0`（只报长度）。调大就会把参数前 N 个字符写进上下文；带 `Authorization` / token 的工具别调大，或加进 `exclude`。
+7. 哈希算的是整个参数对象，`description` 这类元字段也算：命令一模一样、只是描述换了一句，就不算重复。实测（2026-10-22）：两条 `echo probe` 描述不同不触发；连描述一起相同才在第二次触发。
 
 ## 7. 验证
 
