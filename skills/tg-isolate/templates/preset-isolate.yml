@@ -1,0 +1,85 @@
+# 高费低频工具隔离模板（tg-isolate）
+#
+# 用法（三步）：
+#   1. 复制本文件内容，整段追加到 <dsh_home>/profiles/<profile>/cordis.patch.yml
+#   2. 替换所有 <...> 占位符；order 取比现有 preset 大的数字
+#   3. 重启 / 开新会话 → 检查 preset 是否出现、工具数是否下降
+#
+# 回滚：把备份的 cordis.patch.yml 拷回，重启。
+#
+# 注意：
+#   - 基础段（persona/agent-instructions/tool-bash/tool-pwsh/tool-fs/...）必须与
+#     你发行版里的 standard preset 一致，否则新 preset 缺工具、行为异常。
+#   - 服务型插件必须包组 + isolate，键名用插件声明的服务名，否则加载失败：
+#       Preset services require isolate realms
+#   - preset 的 plugins 是对象数组，补丁层不可按 id 寻址，只能整段覆盖。
+
+- insert:
+    - id: preset-<NAME>
+      name: '<VENDOR>/agent-preset'
+      config:
+        id: <NAME>
+        order: 10
+        plugins:
+          # ---- 基础段：照抄你的 standard preset ----
+          - id: persona
+            name: '<VENDOR>/dsh-persona'
+            config:
+              prefix: You are a coding agent powered by the {{model}} model.
+          - id: agent-instructions
+            name: '<VENDOR>/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '<VENDOR>/dsh-time-context'
+          - id: tool-bash
+            name: '<VENDOR>/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '<VENDOR>/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '<VENDOR>/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '<VENDOR>/dsh-tool-fs-search'
+          - id: tool-jobs
+            name: '<VENDOR>/dsh-tool-jobs'
+          - id: skill-filesystem
+            name: '<VENDOR>/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '<VENDOR>/dsh-tool-skill'
+          - id: tool-ask-user
+            name: '<VENDOR>/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '<VENDOR>/dsh-tool-todo'
+
+          # ---- 压缩：与 standard 对齐，别把它调低 ----
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '<VENDOR>/dsh-compaction-basic'
+                config:
+                  thresholdRatio: 0.8
+                  retainRatio: 0.30
+              - id: command-compact
+                name: '<VENDOR>/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '<VENDOR>/dsh-compaction-tool-result-pruner'
+
+          # ---- 重工具（本 preset 存在的理由）：包组 + isolate ----
+          - id: <HEAVY_STACK>
+            name: cordis:group
+            group: true
+            isolate:
+              <serviceKey>: true
+            config:
+              - id: <HEAVY_PLUGIN>
+                name: '<VENDOR>/<HEAVY_PLUGIN>'
+              # 附属驱动/子插件放同一组，共享 isolate 域
+              - id: <HEAVY_DRIVER>
+                name: '<VENDOR>/<HEAVY_DRIVER>'
