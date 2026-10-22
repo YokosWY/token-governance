@@ -3,6 +3,13 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.15 — 2026-10-22（P2-a：协议纪律）
+- 新增 `docs/protocol.md`：改文件前 30 秒的三条硬规则（改前必读、一次一个文件、工具名对照清单）+ 清单 + 自检命令
+- `failure_analysis.py` 新增 `--protocol-only`：只列 `file has not been read` / `file changed since it was read` / `old_string/new_string` / `unknown tool` 四类。本机近 3 天：协议错误 **65 次 / 236 次失败（27.5%）**，其中 edit 44、write 14、未知工具 7（含把工具名打成 `opt_bash`）
+- `tg-ops`：标准动作改为先 `patch_snapshot --snapshot`，并挂回滚命令与协议清单；`tg-loop`：失败重试前先分类，协议错误不重试逻辑
+- `tests/run_tests.py` 扩到 23 项（协议错误单列与工具归类两项）
+- 数据口径更正：先前「近一半花费」指**有失败调用的轮次**（48.9%），不是协议错误单独造成
+
 ## v0.10.14 — 2026-10-22（失败重试分析）
 - 新增 `scripts/failure_analysis.py`：失败调用数、受影响轮次、这些轮次的花费占比、按工具与「报文首行」分类的 Top 清单（数字归一、路径打码）
 - 本机实测（近 3 天，72 会话 / 736 轮）：失败调用 236 次，落在 **142 轮（19%）**，这些轮次花 **¥21.42 = 窗口总花费 48.9%**

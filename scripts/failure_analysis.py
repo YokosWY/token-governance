@@ -13,6 +13,17 @@
 import argparse, json, os, re, statistics, subprocess, sys, time
 
 FAIL_EXIT = re.compile(r"\[exit code: ([1-9]\d*)\]")
+PROTOCOL = (
+    "file has not been read",
+    "file changed since it was read",
+    "old_string and new_string must differ",
+    "unknown tool",
+    "cannot modify",
+)
+
+
+def is_protocol(sig):
+    return any(k in sig for k in PROTOCOL)
 DIGITS = re.compile(r"\d+")
 
 
@@ -130,6 +141,7 @@ def main():
     ap.add_argument("--dsh-home", default="")
     ap.add_argument("--days", type=int, default=3)
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--protocol-only", action="store_true", help="只看工具协议错误（没读就改/文件被改/未知工具）")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -167,7 +179,8 @@ def main():
     if not files:
         sys.exit(f"近 {a.days} 天没有会话")
 
-    all_fails, by_tool, by_sig = [], {}, {}
+    all_fails = []
+    by_tool, by_sig = {}, {}
     fail_cost, total_cost, fail_turns, all_turns = 0.0, 0.0, 0, 0
     sessions_with_fail = set()
     for p in files:
@@ -187,14 +200,20 @@ def main():
                 fail_cost += c["inp"] * cin + c["read"] * cread + c["out"] * cout
         for f in fails:
             all_fails.append(f)
-            by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
-            by_sig[(f["tool"], f["sig"])] = by_sig.get((f["tool"], f["sig"]), 0) + 1
             sessions_with_fail.add(sid)
+
+    proto = [f for f in all_fails if is_protocol(f["sig"])]
+    shown = proto if a.protocol_only else all_fails
+    for f in shown:
+        by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
+        by_sig[(f["tool"], f["sig"])] = by_sig.get((f["tool"], f["sig"]), 0) + 1
 
     payload = {
         "window_days": a.days, "sessions": len(files), "sessions_with_failure": len(sessions_with_fail),
         "turns": all_turns, "turns_with_failure": fail_turns,
         "failed_calls": len(all_fails),
+        "protocol_failed_calls": len(proto),
+        "protocol_share": round(len(proto) / len(all_fails) * 100, 1) if all_fails else 0,
         "failed_call_cost": round(fail_cost, 2), "total_cost": round(total_cost, 2),
         "cost_share": round(fail_cost / total_cost * 100, 1) if total_cost else 0,
         "by_tool": dict(sorted(by_tool.items(), key=lambda kv: -kv[1])),
@@ -208,6 +227,8 @@ def main():
 
     print(f"失败重试分析（近 {a.days} 天，{len(files)} 个会话；价格 {src}）\n")
     print(f"失败调用 {len(all_fails)} 次，落在 {fail_turns} 轮 / {len(sessions_with_fail)} 个会话（总 {all_turns} 轮）")
+    print(f"其中工具协议错误 {len(proto)} 次（占失败调用 {payload['protocol_share']}%）"
+          + ("——本次只列这一类" if a.protocol_only else ""))
     print(f"这些轮次花了 ¥{fail_cost:.2f}，占窗口总花费 ¥{total_cost:.2f} 的 {payload['cost_share']}%\n")
     print(f"{'工具':<18}{'失败次数':>8}")
     for k, v in list(payload["by_tool"].items())[:8]:

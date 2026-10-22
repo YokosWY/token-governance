@@ -187,7 +187,17 @@ def main():
     check("失败工具归类", (fa.get("by_tool") or {}).get("ops_bash") == 1, str(fa.get("by_tool")))
     check("失败轮次被统计", fa.get("turns_with_failure") == 1, str(fa.get("turns_with_failure")))
 
-    # 11. 数字单源
+    # 11. 协议错误过滤
+    put_session(home, "session-proto", "protocol_session.jsonl", tmp)
+    r = run("failure_analysis.py", "--dsh-home", home, "--days", "1", "--protocol-only", "--json")
+    try:
+        fp = json.loads(r.stdout)
+    except Exception:
+        fp = {}
+    check("协议错误被单列", fp.get("protocol_failed_calls", 0) >= 1, str(fp.get("protocol_failed_calls")))
+    check("协议错误只含一类工具", list((fp.get("by_tool") or {}).keys()) == ["edit"], str(fp.get("by_tool")))
+
+    # 12. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
 

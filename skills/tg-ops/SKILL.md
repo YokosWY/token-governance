@@ -35,11 +35,16 @@ description: "tg 子技能 · 配置运维：补丁分层、备份脱敏、死�
 ## 改配置的标准动作
 
 ```bash
+python scripts/patch_snapshot.py --config config.yaml --snapshot   # 先拍快照（比手复制 bak 稳）
 cp cordis.patch.yml cordis.patch.yml.bak-$(date +%Y%m%d-%H%M%S)
 # 改完校验（!!js 自定义标签需专用 loader，普通 yaml 会报错）
 python scripts/check_yaml.py cordis.patch.yml
 # 备份立刻脱敏：把 VITE_*/API_KEY/TOKEN 换成 <REDACTED-SEE-LIVE-PATCH>
 ```
+
+改坏了：`python scripts/patch_snapshot.py --restore latest`，重启生效。回滚前脚本会先备份当前文件。
+
+动手前先过 `docs/protocol.md` 的四条清单——协议错误（没读就改、并行改同一文件、臆造工具名）占失败调用 27.5%。
 
 ## 升级后检查清单
 

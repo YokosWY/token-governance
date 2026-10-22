@@ -31,6 +31,8 @@ description: "TG 循环守卫。同一工具 + 相同参数重复到阈值时按
 
 第 6 次之后仍重复，默认视为「方法错了」，换通道（bash ↔ pwsh、内置 ↔ 插件、读文件 ↔ grep 定位），不要换参数重试。
 
+失败后重试前先分类：协议错误（`file has not been read` / `file changed since it was read` / `unknown tool`）不重试逻辑，先补 `read`、改成串行、换正确工具名——见 `docs/protocol.md`。协议错误占失败调用 27.5%；有失败的轮次合计占窗口花费 48.9%。
+
 ## 调参
 
 改 profile 里该插件的 config（`profiles/<name>/cordis.yml` 的 `loop-guard` 条目，或插件自带的 `cordis.patch.yml`）：

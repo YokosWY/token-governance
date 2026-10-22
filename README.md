@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.14-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.15-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、18 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -129,12 +129,13 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 - [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字
 - [`docs/principles.md`](docs/principles.md)：十二条原理与阈值推导
 - [`docs/guard.md`](docs/guard.md)：循环守卫的事件点、参数哈希与已知限制
+- [`docs/protocol.md`](docs/protocol.md)：改文件前的三条硬规则（协议错误占失败调用 27.5%）
 - [`docs/cache-hit.md`](docs/cache-hit.md)：缓存命中（provider 无关）：三类缓存、价差倍数 k、打穿前缀的 7 个来源
 - 其余在 `docs/`：`mechanisms.md` 六个机制、`adaptation.md` 换环境降级、`portable-vs-local.md` 可移植边界、`glossary.md` 术语、`design.md` 色板
 
 ## 贡献
 
-回归测试：`python tests/run_tests.py`（21 项，纯标准库，不需要 pytest）。
+回归测试：`python tests/run_tests.py`（23 项，纯标准库，不需要 pytest）。
 
 先读 [`CONTRIBUTING.md`](CONTRIBUTING.md)：提交类型、表述规范、破坏性操作的前置检查。问题走 Issues，改动附复现命令与实测数字。
 

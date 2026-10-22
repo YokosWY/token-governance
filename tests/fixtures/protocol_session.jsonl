@@ -1,0 +1,6 @@
+{"type":"session","version":4,"id":"session-fixture-protocol","createdAt":0}
+{"type":"request/header","seq":1,"data":{"header":{"tools":[{"name":"a"}]}}}
+{"type":"user/message","seq":2,"data":{"message":{"content":[{"type":"text","text":"改个文件"}]}}}
+{"type":"assistant/message","seq":3,"data":{"usage":{"inputTokens":900,"cacheReadTokens":9100,"outputTokens":120}}}
+{"type":"tool/call","seq":4,"data":{"name":"edit","arguments":"{\"file_path\":\"x.txt\"}","callId":"e1"}}
+{"type":"tool/result","seq":5,"data":{"message":{"source":{"kind":"tool","callId":"e1"},"content":[{"type":"text","text":"Error: cannot edit \"x.txt\": file has not been read — read the file, then retry"}]}}}
