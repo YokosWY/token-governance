@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.17-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.18-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、18 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -19,7 +19,9 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 - **口径分层：** 单步 / 每轮 / 任务三级都能出数；`turn_cost.py` 按「一条用户指令 = 一轮任务」算钱。
 - **能回滚：** `patch_snapshot.py` 拍补丁快照，一条命令回到上一版，回滚前自动再备份。
 
-## 实测
+## 案例：一台机器上的改前改后
+
+下面是**一台机器、一个模型**的对照，不是适用于所有环境的承诺。方法与复现命令在 [`docs/benchmark.md`](docs/benchmark.md)，你可以用 `baseline.py` 与 `cost_summary.py` 在自己的环境量一遍。
 
 逐 step 重放真实会话日志。价格 input $0.15 / cacheRead $0.003 / output $0.6 每百万 token，汇率 7.1。
 
@@ -41,15 +43,7 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 
 同一会话代回旧参数重放，每轮再降 30–39%。这是下限：反事实只替换 schema 与目录体积，没有模拟旧配置下裁剪与压缩造成的前缀重算。
 
-### 还测到三件反直觉的事
-
-| 发现 | 数值（近 3 天，72 会话 / 736 轮） | 含义 |
-|---|---|---|
-| 失败轮次吃掉近一半花费 | 236 次失败调用落在 142 轮（19%），这些轮次花 ¥21.42，占窗口 48.9% | 省钱要看「一次做成率」，不只压前缀 |
-| 大头是协议错误 | 其中 65 次（27.5%）是「没读就改 / 文件被并行改 / 工具名写错」 | 属操作纪律，`docs/operations.md` 第二节 |
-| 技能几乎没被调用 | 73 会话共 21 次；`tg-gui` / `tg-loop` / `tg-orchestrate` 为 0 | 技能是文档，脚本才是产品 |
-
-样本口径：单机、deepseek-flash、200 k 窗口。工具数、目录体积、步数都是本机实测，换机器数值会不同；方法与脚本通用，价格按 `config.yaml` 改。
+口径：单机、deepseek-flash、200 k 窗口；改前 3 个长会话（492 / 333 / 764 步），改后 7 个新会话（53–126 步）。你环境里的绝对值会不同，看比例与方向。
 
 方法与逐会话数字见 [`docs/benchmark.md`](docs/benchmark.md)。
 
@@ -207,7 +201,7 @@ python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 
 
 - [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字；第十节是缓存命中（provider 无关）
 - [`docs/principles.md`](docs/principles.md)：十二条原理与阈值推导
-- [`docs/operations.md`](docs/operations.md)：循环守卫与协议纪律（协议错误占失败调用 27.5%）
+- [`docs/operations.md`](docs/operations.md)：循环守卫与协议纪律
 - [`docs/concepts.md`](docs/concepts.md)：全部自造词 + 六个机制
 - [`docs/adaptation.md`](docs/adaptation.md)：换机器、换客户端、没有账本时怎么降级
 
@@ -216,7 +210,7 @@ python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 
 | 版本 | 内容 |
 |---|---|
 | v0.10.16 | 文档 11 → 5 篇；协议纪律；数字单源 |
-| v0.10.14 | 失败重试分析（失败轮次占 48.9% 花费） |
+| v0.10.14 | 失败重试分析（失败调用按工具与报文分类） |
 | v0.10.13 | 任务成本、技能埋点、补丁回滚 |
 | v0.10.12 | 23 项回归测试；文档数字单源 |
 | v0.10.9 | 首日基线、会话检索、插件名漂移 |
