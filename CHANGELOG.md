@@ -3,6 +3,12 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.10.2 — 2026-10-22（空环境接入收口）
+- `preflight.py`：冲突清单补 `tg-memlib` / `tg-isolate` / `tg-loop`（7 → 10 个技能）；此前这三个同名已存在时预检报「放行」，复制时静默覆盖
+- `preflight.py`：缺 pyyaml 从「打印一行后按默认 `~/.dsh/skills` 探测」改为直接拒绝（退出码 2），避免查错目录还给出结论
+- `cost_summary.py`：无账本时列出查过的路径并说明「刚装好属正常，先用一天」，退出码仍为 1
+- `README.md`：安装段补 pyyaml 前提、改三行配置、预检三档退出码；体检挪到「先用一天」之后；「不支持」补一条「补丁不随包」
+
 ## v0.10.1 — 2026-10-22（数据脚本 Windows 控制台修复 + 实测记录）
 - `cost_summary.py` / `measure_modules.py`：`¥` 改 `CNY`，Windows 默认 GBK 控制台不再抛 `UnicodeEncodeError`（此前第一次跑体检直接崩，退出码 1；v0.7.9 只修了 `audit_pack.py`）
 - `measure_modules.py`：模块表「助手输出」tokens 列恒为 `0.00M`（`tokens` 字典只含上下文模块）→ 补 `out_tok`，与费用占比自洽

@@ -5,16 +5,17 @@
 """
 import argparse, json, os, shutil, sys
 
-SKILLS = ["tg-router", "tg-cost", "tg-context", "tg-memory",
-          "tg-orchestrate", "tg-gui", "tg-ops"]
+SKILLS = ["tg-router", "tg-cost", "tg-context", "tg-memory", "tg-memlib",
+          "tg-orchestrate", "tg-gui", "tg-isolate", "tg-ops", "tg-loop"]
 
 
 def load_yaml(path):
     try:
         import yaml
     except ImportError:
-        print("! 需要 pyyaml：pip install pyyaml", file=sys.stderr)
-        return {}
+        print("拒绝：缺少 pyyaml。先 pip install pyyaml 再重跑——"
+              "否则会退回默认 ~/.dsh/skills，查的不是你配置的目录。", file=sys.stderr)
+        sys.exit(2)
     if not os.path.isfile(path):
         return {}
     import yaml as y

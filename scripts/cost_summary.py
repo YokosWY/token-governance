@@ -77,7 +77,10 @@ def main():
                 for f in ("calls", "input", "cacheRead", "cacheWrite", "output"):
                     dst[f] += int(mv.get(f) or 0)
     if not merged:
-        sys.exit("没有可读的 ledger；检查 config 里的 dsh_home")
+        tried = "\n".join(f"  {expand(h)}/storages/cost-meter/ledger.json" for h in homes)
+        sys.exit("没有可读的 ledger，查过：\n" + tried +
+                 "\n刚装好的环境属正常：cost-meter 要记过几次调用才有账本，先用一天再看。"
+                 "\n长期没有就改 config 里的 dsh_home。")
 
     rows, tok, models = summarize(merged, a.days)
     total_ctx = tok["input"] + tok["cacheRead"]

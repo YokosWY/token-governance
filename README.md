@@ -1,6 +1,6 @@
 # Token-Governance (TG)
 
-[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.1-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
+[![license](https://img.shields.io/badge/license-MIT-191B1F?style=flat-square)](LICENSE) [![version](https://img.shields.io/badge/version-v0.10.2-2F5D8A?style=flat-square)](CHANGELOG.md) [![skills](https://img.shields.io/badge/skills-10-9C2B23?style=flat-square)](skills) [![scripts](https://img.shields.io/badge/scripts-10-6B6A66?style=flat-square)](scripts)
 
 TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技能、10 个脚本、1 个插件，装在 DeepSeek Harness 的配置层上。
 
@@ -35,15 +35,19 @@ TG 是给 LLM 代理做上下文成本治理的技能包，形态是 10 个技�
 
 ## 安装
 
-前提：Python 3.9+；复算会话需要 `zstd` 在 PATH（Git for Windows 自带）；循环守卫自检需要 Node 18+。
+前提：Python 3.9+ 与 pyyaml（`pip install pyyaml`，预检读配置用）；复算会话需要 `zstd` 在 PATH（Git for Windows 自带）；循环守卫自检需要 Node 18+。
 
 ```bash
-cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) 技能入目录
-cp config.example.yaml config.yaml                 # 2) 改 dsh_home、memory_root 两行
-python scripts/preflight.py --config config.yaml   # 3) 只读预检，有冲突退出码 1
+cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) 技能入目录，重启 DSH 后生效
+cp config.example.yaml config.yaml                 # 2) 改 dsh_home、memory_root、skills_dir 三行
+python scripts/preflight.py --config config.yaml   # 3) 只读预检：放行 0 / 待确认 1 / 拒绝 2
 ```
 
-验证：`python scripts/cost_summary.py --config config.yaml --days 7`，输出含 `合计 CNY`。
+装好先正常用一天。账本由 cost-meter 记，空环境跑体检会提示「没有可读的 ledger」并退出码 1，属正常：
+
+```bash
+python scripts/cost_summary.py --config config.yaml --days 3   # 输出含 合计 CNY
+```
 
 只想要路由层也可以：复制 `skills/tg-router` 与 `scripts/` 就能跑，其余技能按需加。
 
@@ -96,6 +100,7 @@ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME" \
 - 跨客户端不保证：Claude Code、Codex、Cursor 没有 preset 机制，高费工具隔离得改走子代理，见 `docs/adaptation.md`。
 - 压缩不当杠杆：729 步会话压缩 4 次，成本约 ¥0.8、省下约 ¥1.0，净收益接近零。
 - 不看账本不下结论：schema 变小、命中率上升都只是过程量。
+- 补丁不随包：工具裁剪、pruner、压缩阈值都在各机器自己的 `cordis.patch.yml`，复制技能不会降低账单。
 - 覆盖块是快照：组合配置每次启动重写，升级后必须重跑 `gen_preset_override.py`。
 - 不接管安全与需求澄清：密钥、脱敏、上传门禁属本地约束；需求澄清在 `clarify-needs/`。
 
