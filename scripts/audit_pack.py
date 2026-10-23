@@ -25,6 +25,11 @@ def read(p):
 SKIP_DIRS = ("_history", "_archive", "node_modules", ".git", "__pycache__")
 
 
+def _is_backup(name):
+    """备份文件：xxx.bak / xxx.bak-20261022-194451 / xxx.bak_key（不误伤 bakery.py）。"""
+    return name.endswith(".bak") or ".bak-" in name or ".bak_" in name
+
+
 def walk(root):
     out = []
     for dp, dirs, fs in os.walk(root):
@@ -32,7 +37,7 @@ def walk(root):
         if any(x in dp for x in SKIP_DIRS):
             continue
         for f in fs:
-            if f.endswith((".pyc", ".pyo")) or ".bak" in f:
+            if f.endswith((".pyc", ".pyo")) or _is_backup(f):
                 continue
             out.append(os.path.join(dp, f))
     return out

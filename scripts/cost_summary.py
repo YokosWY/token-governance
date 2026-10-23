@@ -7,7 +7,7 @@
 """
 import argparse, json, os, sys, datetime
 
-from tg_common import config_base, expand, load_yaml, resolve_dsh_homes, utf8_stdio
+from tg_common import add_common_args, emit_json, expand, load_config, resolve_dsh_homes, utf8_stdio
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
@@ -50,15 +50,13 @@ def summarize(days, n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.yaml")
+    add_common_args(ap, json_flag=True)
     ap.add_argument("--days", type=int, default=7)
-    ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
     # strict：YAML 写坏要当场报出来，不能静默退回默认 home 再给一份错账
-    cfg = load_yaml(a.config, strict=True) if os.path.isfile(a.config) else {}
-    base = config_base(a.config)
-    homes = resolve_dsh_homes("", cfg=cfg, base=base)
+    cfg, base = load_config(a.config, strict=True)
+    homes = resolve_dsh_homes(a.dsh_home, cfg=cfg, base=base)
     merged, found, seen = {}, [], set()
     for h in homes:
         home = expand(h, base)
@@ -104,7 +102,7 @@ def main():
         "models": sorted(models.items(), key=lambda kv: -kv[1]["tokens"])[:10],
     }
     if a.json:
-        print(json.dumps(out, ensure_ascii=False, indent=2)); return
+        emit_json(out); return
 
     print(f"数据源: {len(found)} 个 ledger")
     print(f"窗口: 最近 {len(rows)} 天 | 合计 CNY {out['totals']['cny']} | {out['totals']['calls']} 次调用")

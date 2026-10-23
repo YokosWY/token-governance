@@ -7,24 +7,24 @@
 """
 import argparse, json, os, sys
 
-from tg_common import ledger_path, load_config, resolve_dsh_home, utf8_stdio
+from tg_common import add_common_args, ledger_path, load_config, resolve_dsh_home, utf8_stdio
 
 utf8_stdio()
 
 
-def load(cfg_path):
+def load(cfg_path, home_arg=""):
     cfg, base = load_config(cfg_path)
-    return ledger_path(resolve_dsh_home("", cfg=cfg, base=base))
+    return ledger_path(resolve_dsh_home(home_arg, cfg=cfg, base=base))
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.yaml")
+    add_common_args(ap, json_flag=False)
     ap.add_argument("--ledger", default=None)
     ap.add_argument("--days", type=int, default=7)
     a = ap.parse_args()
 
-    path = a.ledger or load(a.config)
+    path = a.ledger or load(a.config, a.dsh_home)
     if not os.path.isfile(path):
         sys.exit(f"找不到账本: {path}")
     led = json.load(open(path, encoding="utf-8"))

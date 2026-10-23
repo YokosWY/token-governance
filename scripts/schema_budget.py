@@ -20,7 +20,7 @@ import json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import measure_modules as mm  # noqa: E402  复用会话定位与解压
-from tg_common import load_config, resolve_dsh_home, sessions_root, utf8_stdio  # noqa: E402
+from tg_common import load_config, load_yaml, resolve_dsh_home, sessions_root, utf8_stdio  # noqa: E402
 
 DEFAULT_BUDGET_KB = 160
 TOK_PER_BYTE = 0.4
@@ -73,20 +73,17 @@ def group_of(name):
 
 
 def load_budget(config_path):
-    """返回 (预算KB, 来源, 价格表USD, 汇率)。预算优先级：config.schema_budget_kb > 默认 160。"""
+    """返回 (预算KB, 来源, 价格表USD, 汇率)。预算优先级：config.schema_budget_kb > 默认 160。
+
+    配置读取走 tg_common.load_yaml：读不出来会 stderr 警告，不静默换成另一套默认值。
+    """
     prices = dict(mm.DEFAULT_PRICES)
     rate = mm.DEFAULT_RATE
     if not config_path or not os.path.isfile(config_path):
         return DEFAULT_BUDGET_KB, "默认", prices, rate
-    try:
-        import yaml
-    except ImportError:
-        return DEFAULT_BUDGET_KB, "默认（无 pyyaml）", prices, rate
-    try:
-        with open(config_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-    except Exception:
-        return DEFAULT_BUDGET_KB, "默认（配置解析失败）", prices, rate
+    cfg = load_yaml(config_path, strict=False)
+    if not cfg:
+        return DEFAULT_BUDGET_KB, f"默认（{config_path} 没读到配置）", prices, rate
     p = cfg.get("prices_usd_per_mtok") or {}
     for k in list(prices):
         if p.get(k) is not None:

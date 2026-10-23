@@ -297,25 +297,124 @@ def main():
     check("dsh_home：多个 home 按真实路径去重",
           len(tg_common.resolve_dsh_homes("", cfg={"dsh_homes": [tmp, tmp + os.sep]}, base=tmp)) == 1)
 
-    # 口径不许再手写：除 tg_common 外，脚本里不该直读 DSH_HOME
+    # 口径不许再手写：静态检查走 AST，子串匹配会漏 getenv / 别名 / 字符串拼接，还会误报注释
+    import ast
+
+    def env_home_reads(tree):
+        """找出所有读 DSH_HOME 的表达式：os.environ.get/x[] / os.getenv / 别名调用。"""
+        hits = []
+
+        def is_dsh(node):
+            return isinstance(node, ast.Constant) and node.value == "DSH_HOME"
+
+        aliases = set()
+        for node in ast.walk(tree):
+            # from os import environ as E
+            if isinstance(node, ast.ImportFrom) and node.module == "os":
+                for al in node.names:
+                    if al.name in ("environ", "getenv"):
+                        aliases.add(al.asname or al.name)
+            # import os as o
+            if isinstance(node, ast.Import):
+                for al in node.names:
+                    if al.name == "os":
+                        aliases.add(al.asname or "os")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                f = node.func
+                # os.environ.get("DSH_HOME") / E.get("DSH_HOME") / os.getenv("DSH_HOME")
+                if isinstance(f, ast.Attribute) and f.attr in ("get", "getenv", "pop"):
+                    if node.args and is_dsh(node.args[0]):
+                        hits.append(getattr(node, "lineno", 0))
+                # getenv("DSH_HOME")
+                elif isinstance(f, ast.Name) and f.id == "getenv":
+                    if node.args and is_dsh(node.args[0]):
+                        hits.append(getattr(node, "lineno", 0))
+            # os.environ["DSH_HOME"] / E["DSH_HOME"]
+            if isinstance(node, ast.Subscript):
+                sl = node.slice
+                if is_dsh(sl) or (isinstance(sl, ast.Index) and is_dsh(getattr(sl, "value", None))):  # py<3.9
+                    hits.append(getattr(node, "lineno", 0))
+        return sorted(set(hits))
+
     offenders = []
     for fn in sorted(os.listdir(SCRIPTS)):
         if not fn.endswith(".py") or fn == "tg_common.py":
             continue
         src = open(os.path.join(SCRIPTS, fn), encoding="utf-8").read()
-        if 'environ.get("DSH_HOME")' in src or "environ['DSH_HOME']" in src:
-            offenders.append(fn)
+        try:
+            tree = ast.parse(src)
+        except SyntaxError as e:
+            offenders.append(f"{fn}(语法错误 {e.lineno})")
+            continue
+        for line in env_home_reads(tree):
+            offenders.append(f"{fn}:{line}")
     check("没有脚本再手写 DSH_HOME 解析", not offenders, ", ".join(offenders))
 
-    # 拼 sessions 路径也只允许在 tg_common（JSON 里的 "sessions" 计数键不算：那一行没有 join）
+    # 拼 sessions 路径也只允许在 tg_common（按 AST 找 join(..., "sessions")，不误伤 JSON 键）
     builders = []
     for fn in sorted(os.listdir(SCRIPTS)):
         if not fn.endswith(".py") or fn == "tg_common.py":
             continue
-        for no, line in enumerate(open(os.path.join(SCRIPTS, fn), encoding="utf-8"), 1):
-            if '"sessions"' in line and "join(" in line:
-                builders.append(f"{fn}:{no}")
+        tree = ast.parse(open(os.path.join(SCRIPTS, fn), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join":
+                if any(isinstance(a, ast.Constant) and a.value == "sessions" for a in node.args):
+                    builders.append(f"{fn}:{getattr(node, 'lineno', 0)}")
     check("没有脚本再自己拼 sessions 路径", not builders, ", ".join(builders))
+
+    # 18. 端到端：只给 config、不传 --dsh-home 时必须读 config 指的那份 home
+    e2e_home = os.path.join(tmp, "e2e-home")
+    env_home = os.path.join(tmp, "e2e-env")
+    os.makedirs(env_home, exist_ok=True)
+    put_session(e2e_home, "session-e2e", "retry_session.jsonl", tmp)
+    put_session(env_home, "session-env1", "literal_session.jsonl", tmp)
+    put_session(env_home, "session-env2", "literal_session.jsonl", tmp)
+    e2e_cfg = os.path.join(tmp, "e2e.yaml")
+    write_cfg(e2e_cfg, e2e_home)
+    env = dict(os.environ)
+    env["DSH_HOME"] = env_home  # 环境变量指向另一套：config 仍须赢
+    r = subprocess.run([PY, os.path.join(SCRIPTS, "retry_patterns.py"),
+                        "--config", e2e_cfg, "--days", "30", "--json"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    try:
+        e2e = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        e2e = {}
+    check("只给 config 时读 config 的 home（不受 DSH_HOME 干扰）",
+          e2e.get("sessions") == 1, f"sessions={e2e.get('sessions')} rc={r.returncode}")
+
+    e2e_env_only = subprocess.run([PY, os.path.join(SCRIPTS, "retry_patterns.py"),
+                                   "--days", "30", "--json"],
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=env, cwd=tmp)
+    try:
+        e2e2 = json.loads(e2e_env_only.stdout)
+    except json.JSONDecodeError:
+        e2e2 = {}
+    check("没有 config 时退回 $DSH_HOME",
+          e2e2.get("sessions") == 2, f"sessions={e2e2.get('sessions')} rc={e2e_env_only.returncode}")
+
+    # compare_days 也要有覆盖开关（v0.12.0 由 env 优先改为 config 优先，需能压回去）
+    ledger = {"days": {"2026-10-20": {"calls": 10, "costCny": 1.0}, "2026-10-21": {"calls": 10, "costCny": 2.0}}}
+    os.makedirs(os.path.join(e2e_home, "storages", "cost-meter"), exist_ok=True)
+    with open(os.path.join(e2e_home, "storages", "cost-meter", "ledger.json"), "w", encoding="utf-8") as f:
+        json.dump(ledger, f)
+    r = run("compare_days.py", "--config", e2e_cfg, "--days", "2")
+    check("compare_days 只给 config 时能读到账本", r.returncode == 0 and "2026-10-21" in r.stdout,
+          f"rc={r.returncode}")
+    r = run("compare_days.py", "--config", e2e_cfg, "--dsh-home", os.path.join(tmp, "nope"), "--days", "2")
+    check("compare_days 能用 --dsh-home 压过 config", r.returncode != 0, f"rc={r.returncode}")
+
+    # 配置写坏时必须报错，不能静默换 home 出数
+    bad_cfg = os.path.join(tmp, "bad.yaml")
+    with open(bad_cfg, "w", encoding="utf-8") as f:
+        f.write('dsh_home: "D:\\AI\\DSH-NEXT"\n')  # 双引号里的反斜杠 = YAML 转义，必坏
+    for script in ("guard_stats.py", "baseline.py", "retry_patterns.py", "schema_budget.py"):
+        r = run(script, "--config", bad_cfg)
+        check(f"配置写坏时 {script} 报错而不是换 home",
+              r.returncode != 0 and ("YAML" in (r.stderr or "") or "读不了" in (r.stderr or "")),
+              f"rc={r.returncode}")
 
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")

@@ -5,7 +5,7 @@
 """
 import argparse, json, os, shutil, sys
 
-from tg_common import resolve_dsh_home, utf8_stdio
+from tg_common import add_common_args, config_base, resolve_dsh_home, utf8_stdio
 
 # 输出含中文与 JSON：Windows 控制台默认 GBK，固定 UTF-8，否则 --json 会被上游按 UTF-8 解成乱码。
 utf8_stdio()
@@ -44,15 +44,14 @@ def expand(p, base=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--json", action="store_true", help="输出结构化体检结果（给 doctor / CI 用）")
+    add_common_args(ap, json_flag=True)
     a = ap.parse_args()
 
     cfg = load_yaml(a.config)
-    base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
+    base = config_base(a.config)
     skills_dir = expand(cfg.get("skills_dir") or "~/.dsh/skills", base)
     memory_root = expand(cfg.get("memory_root") or "~/tg-memory", base)
-    dsh_home = resolve_dsh_home("", cfg=cfg, base=base)
+    dsh_home = resolve_dsh_home(a.dsh_home, cfg=cfg, base=base)
 
     rows, conflicts = [], 0
 

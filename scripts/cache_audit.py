@@ -85,7 +85,11 @@ def read_ledger(path):
 
 
 def collect_ledgers(args):
-    """按 --ledger > --home > config 的 dsh_homes/dsh_home > $DSH_HOME > ~/.dsh 找账本，按真实路径去重。"""
+    """按 --ledger > --home > config 的 dsh_homes/dsh_home > $DSH_HOME > ~/.dsh 找账本，按真实路径去重。
+
+    --home 是「额外加上」不是「只要这个」：旧行为就是这么并的，改成覆盖会少算一份账本，
+    成本与命中率都会偏小（v0.12.0 自审时回退过一次覆盖语义）。要只看一份，用 --ledger 直接指路径。
+    """
     candidates = []
     # 显式指定的路径不存在时直接报错：静默回退到别的 home 会给出错误结论
     if args.ledger and not os.path.isfile(expand(args.ledger)):
@@ -93,10 +97,9 @@ def collect_ledgers(args):
     if args.home and not os.path.isdir(expand(args.home)):
         sys.exit(f"--home 不存在: {expand(args.home)}")
     cfg, base = load_config(args.config) if args.config else ({}, os.getcwd())
+    homes = resolve_dsh_homes("", cfg=cfg, base=base)
     if args.home:
-        homes = [expand(args.home)]
-    else:
-        homes = resolve_dsh_homes("", cfg=cfg, base=base)
+        homes = [expand(args.home)] + [h for h in homes if os.path.realpath(h) != os.path.realpath(expand(args.home))]
     if args.ledger:
         candidates.append(expand(args.ledger))
     candidates += [os.path.join(h, "storages", "cost-meter", "ledger.json") for h in homes]

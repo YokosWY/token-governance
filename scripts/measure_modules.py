@@ -12,7 +12,7 @@
 """
 import argparse, json, os, subprocess, sys
 
-from tg_common import config_base, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import config_base, load_yaml, resolve_dsh_home, sessions_root, utf8_stdio
 
 utf8_stdio()
 
@@ -162,14 +162,8 @@ def counterfactual(r, cf_schema, cf_catalog):
 
 
 def load_price_config(path):
-    if not path or not os.path.isfile(path):
-        return {}
-    try:
-        import yaml
-    except ImportError:
-        sys.exit("读 --config 需要 pyyaml：pip install pyyaml")
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    """价格表与 home 来自同一个 config；读不出来直接报错，不静默换 home。"""
+    return load_yaml(path, strict=True)
 
 
 def list_sessions(root, days, limit):
@@ -221,7 +215,7 @@ def main():
     ap.add_argument("--days", type=int, default=7, help="--list 的窗口天数")
     ap.add_argument("--limit", type=int, default=15, help="--list 最多几条")
     ap.add_argument("--dsh-home", default="", help="不给则读 config 的 dsh_home，再退回 $DSH_HOME / ~/.dsh")
-    ap.add_argument("--config", default="", help="从 config.yaml 读 prices_usd_per_mtok 与 rate")
+    ap.add_argument("--config", default="config.yaml", help="读 dsh_home 与价格表（prices_usd_per_mtok / rate）")
     ap.add_argument("--rate", type=float, default=0.0, help="USD→CNY 汇率，覆盖配置")
     ap.add_argument("--cf-schema", type=int, default=0, help="对照的工具 schema 字节数")
     ap.add_argument("--cf-catalog", type=int, default=0, help="对照的技能目录单条字节数")

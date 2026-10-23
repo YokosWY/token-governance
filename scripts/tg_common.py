@@ -52,30 +52,57 @@ def config_base(config_path):
     return os.getcwd()
 
 
+def _yaml_ok():
+    try:
+        import yaml  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _config_fail(path, msg, strict):
+    """配置读不出来时的唯一出口：strict → 退出；否则 stderr 警告后返回 {}。
+
+    为什么不允许静默：读错 home 的后果是「没有数据」或偏小的数字，看起来像脚本坏了。
+    """
+    if strict:
+        sys.exit(f"{path}: {msg}\n（改好配置，或用 --dsh-home 直接指定；不想改配置就跑 tg_common.py 看解析链）")
+    print(f"[warn] {path}: {msg}；已退回 $DSH_HOME / ~/.dsh", file=sys.stderr)
+    return {}
+
+
 def load_yaml(path, strict=False):
-    """读 YAML；默认容错返回 {}（配置缺省不该让整个脚本崩）。strict=True 时把读错报出来。"""
+    """读 YAML。三种情况分开处理：
+
+    - 文件不存在 → 返回 {}（这是正常情况，不算错）
+    - 文件存在但 YAML 坏 → strict 退出，否则 stderr 警告
+    - 没装 pyyaml → strict 退出，否则 stderr 警告（README 说零依赖，但不是所有脚本都只用标准库）
+    """
     if not path or not os.path.isfile(path):
         return {}
     try:
         import yaml
     except ImportError:
-        if strict:
-            sys.exit("需要 pyyaml：pip install pyyaml")
-        return {}
+        return _config_fail(path, "没装 pyyaml，配置读不到（pip install pyyaml）", strict)
     try:
         with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+            data = yaml.safe_load(f)
     except Exception as e:
-        if strict:
-            sys.exit(f"{path} 读不了：{str(e).splitlines()[0]}")
+        return _config_fail(path, f"YAML 读不了：{str(e).splitlines()[0]}", strict)
+    if data is None:
         return {}
+    if not isinstance(data, dict):
+        return _config_fail(path, f"顶层不是映射（读到 {type(data).__name__}）", strict)
+    return data
 
 
-def load_config(config_path=DEFAULT_CONFIG):
-    """返回 (cfg, base)。cfg 读不出来就是 {}，base 永远可用来解析相对路径。"""
-    cfg = load_yaml(config_path) if config_path else {}
-    if not isinstance(cfg, dict):
-        cfg = {}
+def load_config(config_path=DEFAULT_CONFIG, strict=True):
+    """返回 (cfg, base)。strict=True：配置存在但读不出来时直接退出。
+
+    默认 strict 而不是容错：显式写进仓库的 config.yaml 读不出来，继续跑只会给出错数。
+    真想要「没有配置也能跑」，传 strict=False 并接受 stderr 警告。
+    """
+    cfg = load_yaml(config_path, strict=strict) if config_path else {}
     return cfg, config_base(config_path)
 
 
@@ -89,20 +116,31 @@ def _cfg_homes(cfg, base):
     else:
         one = cfg.get("dsh_home")
         seq = [one] if one else []
-    return [expand(h, base) for h in seq if h]
+    homes = []
+    for h in seq:
+        if not isinstance(h, str) or not h.strip():
+            print(f"[warn] config.yaml 的 dsh_home(s) 里有非字符串项，已跳过: {h!r}", file=sys.stderr)
+            continue
+        homes.append(expand(h, base))
+    return homes
 
 
 def resolve_dsh_homes(arg="", cfg=None, base=None, env=None):
-    """多 home 版本：显式参数 > config 列表 > $DSH_HOME > ~/.dsh，保持顺序、按真实路径去重。"""
+    """多 home 版本：显式参数 > config 列表 > $DSH_HOME > ~/.dsh，保持顺序、按真实路径去重。
+
+    显式参数（CLI）按当前目录解析，config 里的值按 config 目录解析——两者语义不同：
+    CLI 是「我现在在这里」，config 是「这份配置旁边」。
+    """
     env = os.environ if env is None else env
     homes = []
     if arg:
-        homes = [expand(h, base) for h in (arg if isinstance(arg, (list, tuple)) else [arg]) if h]
+        homes = [expand(h) for h in (arg if isinstance(arg, (list, tuple)) else [arg])
+                 if isinstance(h, str) and h]
     if not homes:
         homes = _cfg_homes(cfg or {}, base)
     if not homes:
         env_home = (env or {}).get("DSH_HOME")
-        homes = [expand(env_home or "~/.dsh", base)]
+        homes = [expand(env_home or "~/.dsh")]
     out, seen = [], set()
     for h in homes:
         real = os.path.realpath(h)

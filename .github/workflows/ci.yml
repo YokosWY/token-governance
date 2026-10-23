@@ -19,7 +19,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install zstandard pyyaml
-      - name: 回归测试（40 项）
+      - name: 回归测试（48 项）
         run: python tests/run_tests.py
       - name: 包自检（结构 / 引用 / 陈旧词 / 数字单源）
         run: python scripts/audit_pack.py
