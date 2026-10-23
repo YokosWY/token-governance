@@ -7,7 +7,7 @@
 """
 import argparse, json, os, sys, datetime
 
-from tg_common import expand, load_yaml, resolve_dsh_homes, utf8_stdio
+from tg_common import config_base, expand, load_yaml, resolve_dsh_homes, utf8_stdio
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
@@ -55,8 +55,9 @@ def main():
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    cfg = load_yaml(a.config) if os.path.isfile(a.config) else {}
-    base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
+    # strict：YAML 写坏要当场报出来，不能静默退回默认 home 再给一份错账
+    cfg = load_yaml(a.config, strict=True) if os.path.isfile(a.config) else {}
+    base = config_base(a.config)
     homes = resolve_dsh_homes("", cfg=cfg, base=base)
     merged, found, seen = {}, [], set()
     for h in homes:

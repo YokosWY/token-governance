@@ -12,6 +12,7 @@
   - `baseline.py` / `cost_summary.py` 不读 `$DSH_HOME`；`cache_audit.py` 给了 `--config` 就再也不看环境变量；`compare_days.py` 把环境变量排在 config 之前；`install_guard.py` 没有 config 通道
 - 迁移到公共层的脚本：`baseline` / `cache_audit` / `compare_days` / `cost_summary` / `failure_analysis` / `guard_stats` / `install_guard` / `measure_modules` / `patch_snapshot` / `preflight` / `retry_patterns` / `schema_budget` / `skill_usage` / `turn_cost`；`audit_pack` / `doctor` 只换 UTF-8 出口
 - `retry_patterns.py` 新增 `--config`（原先没有），`measure_modules.py` 的 `--dsh-home` 默认值由 `~/.dsh` 改空串，否则显式参数总是「已给」，优先级形同虚设
+- `cost_summary.py` 的 YAML 读取改为 strict：配置写坏要当场报错，不能静默退回默认 home 再给一份错账（它原本就报错，公共层的容错默认值会把这个信号吞掉）
 - `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak*`。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随按运行顺序漂移
 - 测试 32 → 39：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ 1 项静态检查（脚本里不许再出现 `$DSH_HOME` 直读）
 - 验收：测试 39/39、`audit_pack` 0 问题、`gen_metrics --check` 通过；用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两个版本，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 输出逐字节一致（`retry_patterns` 因新增 `--config` 除外）
