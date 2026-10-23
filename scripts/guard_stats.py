@@ -93,12 +93,29 @@ def summarize(events, days, top):
         key = str(c) if isinstance(c, int) else "?"
         by_count[key] = by_count.get(key, 0) + 1
 
+    # 按 (工具, 参数哈希) 归链：一条链 = 同一组参数被反复调用。
+    # 日志只记「提醒点」，所以链的最高级别就是「这组参数被提醒到第几次还活着」。
+    # 到第 6 次说明前两次提醒都没改变行为 —— 这是「顽固循环」的唯一可观测代理。
+    chains = {}
+    for o in kept:
+        key = (str(o.get("tool")), str(o.get("hash") or ""))
+        c = o.get("count")
+        chains[key] = max(chains.get(key, 0), int(c) if isinstance(c, int) else 0)
+    levels = {"2": 0, "4": 0, "6": 0, "other": 0}
+    for c in chains.values():
+        levels[str(c) if c in (2, 4, 6) else "other"] += 1
+    stubborn = sum(1 for c in chains.values() if c >= 6)
+
     top_tools = sorted(by_tool.items(), key=lambda kv: -kv[1])[:top]
     return {
         "window_days": days,
         "events": len(kept),
         "events_total": len(events),
         "tools": len(by_tool),
+        "chains": len(chains),
+        "chain_levels": levels,
+        "stubborn_chains": stubborn,
+        "stubborn_rate": round(stubborn / len(chains), 3) if chains else 0.0,
         "top_tools": [{"tool": k, "hits": v} for k, v in top_tools],
         "by_day": dict(sorted(by_day.items())),
         "by_count": dict(sorted(by_count.items(), key=lambda kv: (len(kv[0]), kv[0]))),
@@ -141,6 +158,9 @@ def main():
     if not s["events"]:
         print("  窗口内没有提醒。要么没触发，要么守卫没装最新版。")
         return 0
+    lv = s["chain_levels"]
+    print(f"  参数链 {s['chains']} 条：停在 2 次 {lv['2']} / 升到 4 次 {lv['4']} / "
+          f"升到 6 次 {lv['6']} → 顽固率 {s['stubborn_rate'] * 100:.0f}%")
     print(f"\n{'工具':<28}{'次数':>6}")
     for t in s["top_tools"]:
         print(f"{t['tool']:<28}{t['hits']:>6}")
@@ -149,6 +169,8 @@ def main():
         print(f"{d:<12}{n:>6}")
     print("\n口径：一条 = 一次真正追加到上下文的提醒（同一链只在 2/4/6 次各记一次）；"
           "参数只记哈希与长度，不记内容。")
+    print("顽固率 = 被提醒到第 6 次仍在重复的链占比；它是「提醒没改变行为」的代理指标，"
+          "不能证明之后是否止损。")
     return 0
 
 
