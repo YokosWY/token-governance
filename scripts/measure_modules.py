@@ -12,6 +12,10 @@
 """
 import argparse, json, os, subprocess, sys
 
+from tg_common import config_base, resolve_dsh_home, sessions_root, utf8_stdio
+
+utf8_stdio()
+
 DEFAULT_RATE = 7.1
 DEFAULT_PRICES = {"input": 0.15, "cached": 0.003, "output": 0.6}
 
@@ -216,7 +220,7 @@ def main():
     ap.add_argument("--list", action="store_true", help="列出最近会话，按修改时间倒序")
     ap.add_argument("--days", type=int, default=7, help="--list 的窗口天数")
     ap.add_argument("--limit", type=int, default=15, help="--list 最多几条")
-    ap.add_argument("--dsh-home", default="~/.dsh")
+    ap.add_argument("--dsh-home", default="", help="不给则读 config 的 dsh_home，再退回 $DSH_HOME / ~/.dsh")
     ap.add_argument("--config", default="", help="从 config.yaml 读 prices_usd_per_mtok 与 rate")
     ap.add_argument("--rate", type=float, default=0.0, help="USD→CNY 汇率，覆盖配置")
     ap.add_argument("--cf-schema", type=int, default=0, help="对照的工具 schema 字节数")
@@ -242,7 +246,8 @@ def main():
         src = f"{src}，汇率由 --rate 覆盖"
     set_prices(prices, rate, src)
 
-    root = os.path.join(os.path.expanduser(os.environ.get("DSH_HOME") or a.dsh_home), "sessions")
+    home = resolve_dsh_home(a.dsh_home, cfg=cfg, base=config_base(a.config))
+    root = sessions_root(home)
     if a.list:
         if not os.path.isdir(root):
             sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
@@ -251,7 +256,7 @@ def main():
     if not a.session:
         sys.exit("需要 --session <id|path>，或加 --list 先看有哪些会话。")
 
-    path = find_session(a.dsh_home, a.session)
+    path = find_session(home, a.session)
     if not path:
         sys.exit(f"找不到会话: {a.session}")
     events = load_events(path)

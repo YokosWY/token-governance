@@ -39,9 +39,15 @@ fix: 修正 README 语句错误
 ## 提交前自查
 
 1. `python scripts/audit_pack.py`（包完整性）或 `python scripts/check_yaml.py <补丁>`（配置语法）。
-2. `python tests/run_tests.py`（29 项回归；Windows 为验收环境，CI 跑同一套命令）。
+2. `python tests/run_tests.py`（39 项回归；Windows 为验收环境，CI 跑同一套命令）。
 3. `git diff --stat` 确认改动范围；`git status` 确认没有把 `_local/`、`config.yaml` 带进来。
 4. 若改动了文档中的数据，同步更新 `CHANGELOG.md` 与相关 `docs/`。
+
+## 脚本约定
+
+- `dsh_home` 只在 `scripts/tg_common.py` 里解析，优先级见 `docs/operations.md` 第四节。脚本里不许再出现 `$DSH_HOME` 直读或自己拼 `sessions` 路径——测试里有一项静态检查会拦。
+- 中文输出统一走 `tg_common.utf8_stdio()`，不在各脚本里重写 `reconfigure`。
+- 新增脚本要进 `audit_pack` 的交叉引用、README 组成表与测试；数量变化时同步 `README.md` 与 `README_EN.md`。
 
 ## CI
 

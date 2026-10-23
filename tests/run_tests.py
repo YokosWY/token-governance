@@ -265,11 +265,53 @@ def main():
     check("守卫按工具聚合", (gs.get("top_tools") or [{}])[0].get("hits") == 2,
           str(gs.get("top_tools")))
 
-    # 15. 数字单源
+    # 15. dsh_home 口径单一：显式 > config > $DSH_HOME > ~/.dsh，相对路径按 config 目录解析
+    sys.path.insert(0, SCRIPTS)
+    import tg_common
+
+    cfg_dir = os.path.join(tmp, "cfgdir")
+    os.makedirs(cfg_dir, exist_ok=True)
+    cfg_file = os.path.join(cfg_dir, "config.yaml")
+    write_cfg(cfg_file, os.path.join(tmp, "from-cfg"))
+    cfg, base = tg_common.load_config(cfg_file)
+    norm = os.path.normpath
+    check("dsh_home：显式参数优先于 config",
+          tg_common.resolve_dsh_home(os.path.join(tmp, "explicit"), cfg=cfg, base=base)
+          == norm(os.path.join(tmp, "explicit")))
+    check("dsh_home：config 优先于 $DSH_HOME",
+          tg_common.resolve_dsh_home("", cfg=cfg, base=base, env={"DSH_HOME": os.path.join(tmp, "env")})
+          == norm(os.path.join(tmp, "from-cfg")))
+    check("dsh_home：没有 config 时退回 $DSH_HOME",
+          tg_common.resolve_dsh_home("", cfg={}, base=tmp, env={"DSH_HOME": os.path.join(tmp, "env")})
+          == norm(os.path.join(tmp, "env")))
+    check("dsh_home：都没有时退回 ~/.dsh",
+          tg_common.resolve_dsh_home("", cfg={}, base=tmp, env={})
+          == norm(os.path.expanduser("~/.dsh")))
+    rel_cfg = os.path.join(cfg_dir, "rel.yaml")
+    with open(rel_cfg, "w", encoding="utf-8") as f:
+        f.write('dsh_home: "rel-home"\n')
+    rel_cfg_data, rel_base = tg_common.load_config(rel_cfg)
+    check("dsh_home：相对路径按 config 目录解析",
+          tg_common.resolve_dsh_home("", cfg=rel_cfg_data, base=rel_base)
+          == norm(os.path.join(cfg_dir, "rel-home")))
+    check("dsh_home：多个 home 按真实路径去重",
+          len(tg_common.resolve_dsh_homes("", cfg={"dsh_homes": [tmp, tmp + os.sep]}, base=tmp)) == 1)
+
+    # 口径不许再手写：除 tg_common 外，脚本里不该直读 DSH_HOME
+    offenders = []
+    for fn in sorted(os.listdir(SCRIPTS)):
+        if not fn.endswith(".py") or fn == "tg_common.py":
+            continue
+        src = open(os.path.join(SCRIPTS, fn), encoding="utf-8").read()
+        if 'environ.get("DSH_HOME")' in src or "environ['DSH_HOME']" in src:
+            offenders.append(fn)
+    check("没有脚本再手写 DSH_HOME 解析", not offenders, ", ".join(offenders))
+
+    # 16. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
 
-    # 11. 包自检
+    # 17. 包自检
     r = run("audit_pack.py")
     check("audit_pack 通过", r.returncode == 0)
 

@@ -14,11 +14,9 @@ events.jsonl 每条 = 一次真正发出的提醒，只有工具名、第几次�
 """
 import argparse, datetime, json, os, sys
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+from tg_common import load_config, resolve_dsh_home, utf8_stdio
+
+utf8_stdio()
 
 DEFAULTS = {
     "file": "",
@@ -34,18 +32,10 @@ def load_dsh_home(config_path):
 
     多套客户端时别读错日志：官方版写 ~/.dsh，发行版写自己的 home，
     两个路径都可能有 events.jsonl，默认值猜错就会报「没有日志」。
+    口径统一在 tg_common.resolve_dsh_home，别在这里另写一套。
     """
-    if config_path and os.path.isfile(config_path):
-        try:
-            import yaml
-            with open(config_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-            v = cfg.get("dsh_home")
-            if v:
-                return str(v)
-        except Exception:
-            pass
-    return os.environ.get("DSH_HOME") or "~/.dsh"
+    cfg, base = load_config(config_path)
+    return resolve_dsh_home("", cfg=cfg, base=base)
 
 
 def default_path(dsh_home):

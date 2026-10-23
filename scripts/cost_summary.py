@@ -7,31 +7,11 @@
 """
 import argparse, json, os, sys, datetime
 
+from tg_common import expand, load_yaml, resolve_dsh_homes, utf8_stdio
+
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+utf8_stdio()
 
-def load_yaml(path):
-    try:
-        import yaml
-    except ImportError:
-        sys.exit("需要 pyyaml：pip install pyyaml")
-    try:
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except Exception as e:
-        sys.exit(f"{path} 不是合法 YAML（{str(e).splitlines()[0]}）。"
-                 "Windows 路径用正斜杠或单引号，别在双引号里写反斜杠。")
-
-def expand(p, base=None):
-    """~ 与环境变量展开；相对路径按 config.yaml 所在目录解析（文档承诺的口径）。"""
-    s = os.path.expanduser(os.path.expandvars(str(p)))
-    if base and not os.path.isabs(s):
-        s = os.path.join(base, s)
-    return os.path.normpath(s)
 
 def read_ledger(home):
     p = os.path.join(home, "storages", "cost-meter", "ledger.json")
@@ -77,7 +57,7 @@ def main():
 
     cfg = load_yaml(a.config) if os.path.isfile(a.config) else {}
     base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
-    homes = cfg.get("dsh_homes") or [cfg.get("dsh_home") or "~/.dsh"]
+    homes = resolve_dsh_homes("", cfg=cfg, base=base)
     merged, found, seen = {}, [], set()
     for h in homes:
         home = expand(h, base)

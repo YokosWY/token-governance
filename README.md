@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、21 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
+> 10 个技能、22 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
 
 </div>
@@ -129,7 +129,7 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（21 个）
+### 脚本（22 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
@@ -138,6 +138,7 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
 | 改配置 | `preflight` / `gen_preset_override` / `patch_snapshot` / `install_guard` | 装前查冲突、升级后重生成、改坏能回滚 |
 | 守质量 | `baseline` / `audit_pack` / `gen_metrics` / `check_yaml` / `new_session` / `guard_stats` | 首日基线、包自检、数字单源、会话卡、守卫命中统计 |
+| 公共层 | `tg_common` / `verify_guard` | `dsh_home` 单一口径、UTF-8 输出、配置读取；守卫离线断言 |
 
 ### 插件（1 个）
 
@@ -151,9 +152,9 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 21 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量
+  scripts/                     # 22 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 32 项断言 + fixtures
+  tests/                       # 39 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
 ```
@@ -167,12 +168,12 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 32 项断言，纯标准库，不需要 pytest
+python tests/run_tests.py             # 39 项断言，纯标准库，不需要 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、文档数字一致、包自检。
+三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级、文档数字一致、包自检。
 
 `.github/workflows/ci.yml` 在 Windows 上跑同一套命令作为合并门禁；Linux 只做探测（不阻塞），因为验收环境是 Windows。
 
@@ -233,6 +234,14 @@ loop_guard:
 
 路径支持 `~` 与环境变量；相对路径按 `config.yaml` 所在目录解析。Windows 路径用正斜杠或单引号，双引号里的反斜杠会被 YAML 当转义。
 
+`dsh_home` 的解析只有一处实现（`scripts/tg_common.py`），优先级固定：
+
+```text
+--dsh-home / --home  >  config.yaml 的 dsh_homes / dsh_home  >  $DSH_HOME  >  ~/.dsh
+```
+
+机器上装了两套客户端时（官方版写 `~/.dsh`、发行版写自己的 home），这条优先级决定脚本读哪一份会话与账本；用 `--dsh-home` 可以临时压过配置。
+
 ## 已知边界
 
 - **跨客户端不保证**：Claude Code、Codex、Cursor 没有 preset 机制，高费工具隔离得改走子代理，见 `docs/adaptation.md`。
@@ -271,6 +280,8 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
+| v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析；修 3 处读错 home 的隐性问题；测试 39 项 |
+| v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |
 | v0.11.1 | 需求澄清迁出为独立仓库 |
 | v0.11.0 | `doctor` 单入口 + `schema_budget` 归因与预算；CI；测试 29 项 |

@@ -24,10 +24,9 @@ import shutil
 import sys
 from pathlib import Path
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+from tg_common import config_base, load_config, resolve_dsh_home, utf8_stdio
+
+utf8_stdio()
 
 REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "plugins" / "dsh-loop-guard"
@@ -36,15 +35,9 @@ DIR_NAME = "dsh-loop-guard"
 
 
 def pick_home(explicit: str | None) -> Path:
-    if explicit:
-        return Path(explicit)
-    env = os.environ.get("DSH_HOME")
-    if env:
-        return Path(env)
-    for cand in (Path.home() / ".dsh",):
-        if (cand / "profiles").exists():
-            return cand
-    return Path.home() / ".dsh"
+    """口径同 tg_common.resolve_dsh_home：显式 > config 的 dsh_home > $DSH_HOME > ~/.dsh。"""
+    cfg, base = load_config(str(REPO / "config.yaml"))
+    return Path(resolve_dsh_home(explicit or "", cfg=cfg, base=base))
 
 
 def sha(path: Path) -> str:

@@ -14,6 +14,10 @@
 import argparse, json, os, re, subprocess, sys, time
 from collections import Counter, defaultdict
 
+from tg_common import load_config, resolve_dsh_home, sessions_root, utf8_stdio
+
+utf8_stdio()
+
 FAIL_EXIT = re.compile(r"\[exit code: ([1-9]\d*)\]")
 FAIL_HEAD = ("Error", "ERROR", "Traceback (most recent call last)", "ENOENT", "EACCES")
 
@@ -110,13 +114,15 @@ def analyze(path, min_run):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dsh-home", default="~/.dsh")
+    ap.add_argument("--dsh-home", default="", help="不给则读 config 的 dsh_home，再退回 $DSH_HOME / ~/.dsh")
+    ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--days", type=int, default=7, help="只看最近 N 天修改过的会话")
     ap.add_argument("--min-run", type=int, default=3, help="串长下限，默认 3")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    root = os.path.join(os.path.expanduser(os.environ.get("DSH_HOME") or a.dsh_home), "sessions")
+    cfg, base = load_config(a.config)
+    root = sessions_root(resolve_dsh_home(a.dsh_home, cfg=cfg, base=base))
     if not os.path.isdir(root):
         sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
     cutoff = time.time() - a.days * 86400

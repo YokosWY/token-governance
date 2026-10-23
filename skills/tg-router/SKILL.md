@@ -22,6 +22,7 @@ description: "TG 总入口与技能路由。任何要控成本、要跨会话续
 
 读 `config.yaml`（与技能同级或项目根）。没有就用默认：`dsh_home=~/.dsh`、`memory_root=~/tg-memory`。
 下文 `${DSH_HOME}` / `${TG_MEMORY}` 均指配置里的值。
+跑脚本时 `dsh_home` 的解析顺序是 `--dsh-home` > config > `$DSH_HOME` > `~/.dsh`（实现只有一处：`scripts/tg_common.py`；装了两套客户端时先确认读的是哪一份）。
 
 ## 五域路由
 

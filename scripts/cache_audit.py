@@ -18,6 +18,8 @@ import json
 import os
 import sys
 
+from tg_common import expand, load_config, resolve_dsh_homes, utf8_stdio
+
 DEFAULT_IN = 0.15      # 未命中输入价（USD / M tok），换 provider 自己改
 DEFAULT_CACHE = 0.003  # 命中价
 FIELD_ALIASES = {
@@ -30,10 +32,7 @@ FIELD_ALIASES = {
 
 
 def _safe_stdout():
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+    utf8_stdio()
 
 
 def pick(d, names):
@@ -58,24 +57,6 @@ def find_usage(obj, depth=0):
             if u:
                 return u
     return None
-
-
-def expand(p, base=None):
-    s = os.path.expanduser(os.path.expandvars(str(p)))
-    if base and not os.path.isabs(s):
-        s = os.path.join(base, s)
-    return os.path.normpath(s)
-
-
-def load_config(path):
-    if not path or not os.path.isfile(path):
-        return {}
-    try:
-        import yaml
-    except ImportError:
-        return {}
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
 
 
 def read_ledger(path):
@@ -104,26 +85,23 @@ def read_ledger(path):
 
 
 def collect_ledgers(args):
-    """按 --ledger > --home > --config > 默认 ~/.dsh 顺序找账本，按真实路径去重。"""
+    """按 --ledger > --home > config 的 dsh_homes/dsh_home > $DSH_HOME > ~/.dsh 找账本，按真实路径去重。"""
     candidates = []
     # 显式指定的路径不存在时直接报错：静默回退到别的 home 会给出错误结论
     if args.ledger and not os.path.isfile(expand(args.ledger)):
         sys.exit(f"--ledger 不存在: {expand(args.ledger)}")
     if args.home and not os.path.isdir(expand(args.home)):
         sys.exit(f"--home 不存在: {expand(args.home)}")
-    cfg = {}
-    if args.config:
-        cfg = load_config(args.config)
-        base = os.path.dirname(os.path.abspath(args.config)) if os.path.isfile(args.config) else os.getcwd()
-        for h in (cfg.get("dsh_homes") or [cfg.get("dsh_home") or "~/.dsh"]):
-            candidates.append(os.path.join(expand(h, base), "storages", "cost-meter", "ledger.json"))
+    cfg, base = load_config(args.config) if args.config else ({}, os.getcwd())
     if args.home:
-        candidates.insert(0, os.path.join(expand(args.home), "storages", "cost-meter", "ledger.json"))
+        homes = [expand(args.home)]
+    else:
+        homes = resolve_dsh_homes("", cfg=cfg, base=base)
     if args.ledger:
-        candidates.insert(0, expand(args.ledger))
+        candidates.append(expand(args.ledger))
+    candidates += [os.path.join(h, "storages", "cost-meter", "ledger.json") for h in homes]
     if not candidates:
-        env = os.environ.get("DSH_HOME")
-        candidates = [os.path.join(expand(env or "~/.dsh"), "storages", "cost-meter", "ledger.json")]
+        candidates = [os.path.join(expand("~/.dsh"), "storages", "cost-meter", "ledger.json")]
 
     merged, found, seen = {}, [], set()
     for p in candidates:
@@ -233,7 +211,7 @@ def main():
         print("# 每次响应存一行，两个 token 数照抄；攒 10 行后 --jsonl 跑一次。")
         return
 
-    cfg = load_config(a.config)
+    cfg, _base = load_config(a.config)
     prices = cfg.get("prices_usd_per_mtok") or {}
     p_in = a.price_in if a.price_in is not None else float(prices.get("input") or DEFAULT_IN)
     p_cache = a.price_cache if a.price_cache is not None else float(prices.get("cached") or DEFAULT_CACHE)

@@ -18,16 +18,15 @@ doctor 只做两件事：把已有脚本的 JSON 汇成一页结论；把能安�
 """
 import datetime, json, os, subprocess, sys
 
+from tg_common import utf8_stdio
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "scripts")
 PY = sys.executable
 
 
 def safe_stdout():
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+    utf8_stdio()
 
 
 def run_json(script, *args):

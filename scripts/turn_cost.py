@@ -11,12 +11,10 @@
 """
 import argparse, json, os, statistics, subprocess, sys, time
 
+from tg_common import config_base, resolve_dsh_home, sessions_root, utf8_stdio
+
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+utf8_stdio()
 
 
 def decompress(path):
@@ -113,7 +111,7 @@ def main():
     a = ap.parse_args()
 
     prices, rate, src = {"input": 0.15, "cached": 0.003, "output": 0.6}, 7.1, "默认 flash 价（估算）"
-    home = a.dsh_home
+    cfg = {}
     if os.path.isfile(a.config):
         try:
             import yaml
@@ -126,10 +124,9 @@ def main():
             src = f"config: {a.config}"
         if cfg.get("rate") is not None:
             rate = float(cfg["rate"])
-        home = home or cfg.get("dsh_home") or ""
     cin, cread, cout = (prices["input"] * rate / 1e6, prices["cached"] * rate / 1e6,
                         prices["output"] * rate / 1e6)
-    root = os.path.join(os.path.expanduser(os.path.expandvars(home or "~/.dsh")), "sessions")
+    root = sessions_root(resolve_dsh_home(a.dsh_home, cfg=cfg, base=config_base(a.config)))
     if not os.path.isdir(root):
         sys.exit(f"找不到会话目录: {root}（检查 --dsh-home / config 的 dsh_home）")
 

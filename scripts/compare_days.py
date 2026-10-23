@@ -7,15 +7,14 @@
 """
 import argparse, json, os, sys
 
+from tg_common import ledger_path, load_config, resolve_dsh_home, utf8_stdio
+
+utf8_stdio()
+
 
 def load(cfg_path):
-    try:
-        import yaml
-        cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
-    except Exception:
-        cfg = {}
-    home = os.path.expanduser(os.environ.get("DSH_HOME") or cfg.get("dsh_home") or "~/.dsh")
-    return os.path.join(home, "storages", "cost-meter", "ledger.json")
+    cfg, base = load_config(cfg_path)
+    return ledger_path(resolve_dsh_home("", cfg=cfg, base=base))
 
 
 def main():

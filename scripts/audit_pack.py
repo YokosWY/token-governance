@@ -7,12 +7,10 @@
 """
 import argparse, os, re, subprocess, sys
 
+from tg_common import utf8_stdio
+
 # 输出含中文，Windows 控制台默认 GBK：固定成 UTF-8，避免打包到没有 PYTHONIOENCODING 的环境就崩。
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+utf8_stdio()
 
 STALE = ["Metron", "Tessera", "metron", "tessera", "tg-guard", "metron-", "90% 规则"]
 
@@ -24,12 +22,18 @@ def read(p):
         return ""
 
 
+SKIP_DIRS = ("_history", "_archive", "node_modules", ".git", "__pycache__")
+
+
 def walk(root):
     out = []
-    for dp, _, fs in os.walk(root):
-        if any(x in dp for x in ("_history", "_archive", "node_modules", ".git")):
+    for dp, dirs, fs in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        if any(x in dp for x in SKIP_DIRS):
             continue
         for f in fs:
+            if f.endswith((".pyc", ".pyo")) or ".bak" in f:
+                continue
             out.append(os.path.join(dp, f))
     return out
 

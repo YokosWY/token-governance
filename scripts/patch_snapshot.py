@@ -12,12 +12,10 @@
 """
 import argparse, datetime, os, shutil, sys
 
+from tg_common import config_base, resolve_dsh_home, utf8_stdio
+
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+utf8_stdio()
 
 STORE = ("backup", "patch")
 
@@ -32,8 +30,8 @@ def load_cfg(path):
         sys.exit(f"{path} 读不了：{str(e).splitlines()[0]}")
 
 
-def paths(cfg, home_arg, profile):
-    home = os.path.expanduser(os.path.expandvars(home_arg or cfg.get("dsh_home") or "~/.dsh"))
+def paths(cfg, home_arg, profile, config_path="config.yaml"):
+    home = resolve_dsh_home(home_arg, cfg=cfg, base=config_base(config_path))
     patch = os.path.join(home, "profiles", profile, "cordis.patch.yml")
     store = os.path.join(home, *STORE)
     return patch, store
@@ -68,7 +66,7 @@ def main():
     a = ap.parse_args()
 
     cfg = load_cfg(a.config)
-    patch, store = paths(cfg, a.home, a.profile)
+    patch, store = paths(cfg, a.home, a.profile, a.config)
 
     if a.snapshot:
         name, dst = take(patch, store)

@@ -20,16 +20,14 @@ import json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import measure_modules as mm  # noqa: E402  复用会话定位与解压
+from tg_common import load_config, resolve_dsh_home, sessions_root, utf8_stdio  # noqa: E402
 
 DEFAULT_BUDGET_KB = 160
 TOK_PER_BYTE = 0.4
 
 
 def safe_stdout():
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+    utf8_stdio()
 
 
 def group_of(name):
@@ -104,19 +102,13 @@ def load_budget(config_path):
         return DEFAULT_BUDGET_KB, "默认（值不是整数）", prices, rate
 
 
-def load_dsh_home(config_path, default="~/.dsh"):
-    """--dsh-home 没显式给时，跟 config.yaml 的 dsh_home 走（多套客户端时别读错账）。"""
-    if config_path and os.path.isfile(config_path):
-        try:
-            import yaml
-            with open(config_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-            v = cfg.get("dsh_home")
-            if v:
-                return str(v)
-        except Exception:
-            pass
-    return default
+def load_dsh_home(config_path, arg=""):
+    """--dsh-home 没显式给时，跟 config.yaml 的 dsh_home 走（多套客户端时别读错账）。
+
+    口径统一在 tg_common.resolve_dsh_home：显式 > config > $DSH_HOME > ~/.dsh。
+    """
+    cfg, base = load_config(config_path)
+    return resolve_dsh_home(arg, cfg=cfg, base=base)
 
 
 def pick_session(dsh_home, session, days, limit=8):
@@ -130,7 +122,7 @@ def pick_session(dsh_home, session, days, limit=8):
         if not p:
             sys.exit(f"找不到会话: {session}")
         return [(p, os.path.basename(os.path.dirname(p)).replace("session-", "")[:8])]
-    root = os.path.join(os.path.expanduser(os.environ.get("DSH_HOME") or dsh_home), "sessions")
+    root = sessions_root(dsh_home)
     if not os.path.isdir(root):
         sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
     import time
@@ -186,7 +178,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="超预算时退出码 1")
     a = ap.parse_args()
 
-    dsh_home = a.dsh_home or load_dsh_home(a.config)
+    dsh_home = load_dsh_home(a.config, a.dsh_home)
 
     rows, steps, sid, skipped = None, 0, "", 0
     for path, cand in pick_session(dsh_home, a.session, a.days):

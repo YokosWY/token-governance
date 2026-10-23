@@ -5,12 +5,10 @@
 """
 import argparse, json, os, shutil, sys
 
+from tg_common import resolve_dsh_home, utf8_stdio
+
 # 输出含中文与 JSON：Windows 控制台默认 GBK，固定 UTF-8，否则 --json 会被上游按 UTF-8 解成乱码。
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+utf8_stdio()
 
 SKILLS = ["tg-router", "tg-cost", "tg-context", "tg-memory", "tg-memlib",
           "tg-orchestrate", "tg-gui", "tg-isolate", "tg-ops", "tg-loop"]
@@ -54,7 +52,7 @@ def main():
     base = os.path.dirname(os.path.abspath(a.config)) if os.path.isfile(a.config) else os.getcwd()
     skills_dir = expand(cfg.get("skills_dir") or "~/.dsh/skills", base)
     memory_root = expand(cfg.get("memory_root") or "~/tg-memory", base)
-    dsh_home = expand(cfg.get("dsh_home") or "~/.dsh", base)
+    dsh_home = resolve_dsh_home("", cfg=cfg, base=base)
 
     rows, conflicts = [], 0
 

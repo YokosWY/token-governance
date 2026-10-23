@@ -3,6 +3,19 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
+- 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这 8 件事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次
+- **口径统一为**：`--dsh-home` / `--home` > `config.yaml` 的 `dsh_homes` / `dsh_home` > `$DSH_HOME` > `~/.dsh`；相对路径按 config 目录解析，多 home 按真实路径去重。文档见 `docs/operations.md` 第四节，自检 `python scripts/tg_common.py` 打印解析链
+- 修掉的隐性问题（都是「读错 home → 报没有数据或数字偏小」，不是崩溃）：
+  - `measure_modules.py` / `schema_budget.py` 的 `--list` 分支把 `$DSH_HOME` 排在显式 `--dsh-home` 前面；同一脚本的 `--list` 与 `--session` 会读两个不同的 home
+  - `retry_patterns.py` 与 `measure_modules.py` 完全不读 config，默认落 `~/.dsh`：本机实测 30 天窗口 49 个会话 → 98 个（`~/.dsh` 是官方版 home，配置指向装载版的 `D:\AI\DSH-NEXT`）
+  - `baseline.py` / `cost_summary.py` 不读 `$DSH_HOME`；`cache_audit.py` 给了 `--config` 就再也不看环境变量；`compare_days.py` 把环境变量排在 config 之前；`install_guard.py` 没有 config 通道
+- 迁移到公共层的脚本：`baseline` / `cache_audit` / `compare_days` / `cost_summary` / `failure_analysis` / `guard_stats` / `install_guard` / `measure_modules` / `patch_snapshot` / `preflight` / `retry_patterns` / `schema_budget` / `skill_usage` / `turn_cost`；`audit_pack` / `doctor` 只换 UTF-8 出口
+- `retry_patterns.py` 新增 `--config`（原先没有），`measure_modules.py` 的 `--dsh-home` 默认值由 `~/.dsh` 改空串，否则显式参数总是「已给」，优先级形同虚设
+- `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak*`。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随按运行顺序漂移
+- 测试 32 → 39：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ 1 项静态检查（脚本里不许再出现 `$DSH_HOME` 直读）
+- 验收：测试 39/39、`audit_pack` 0 问题、`gen_metrics --check` 通过；用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两个版本，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 输出逐字节一致（`retry_patterns` 因新增 `--config` 除外）
+
 ## v0.11.4 — 2026-10-24（顽固循环率 + 协议规则落在常驻层）
 - `guard_stats.py`：新增「参数链」口径——按 `(工具, 参数哈希)` 归链，取链内最高提醒次数，输出停在 2 / 升到 4 / 升到 6 的分布与**顽固率**（到第 6 次仍在重复的链占比）。这是「提醒没改变行为」的唯一可观测代理；口径写明不能证明之后是否止损
 - `tg-loop`：协议硬检查节补「位置提醒」——本节同时在宿主 `AGENTS.md` §5 常驻一句话，技能是待机状态，只写在技能里等于没写
