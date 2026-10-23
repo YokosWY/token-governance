@@ -29,8 +29,27 @@ DEFAULTS = {
 }
 
 
+def load_dsh_home(config_path):
+    """--dsh-home / --file 都没给时，跟 config.yaml 的 dsh_home 走。
+
+    多套客户端时别读错日志：官方版写 ~/.dsh，发行版写自己的 home，
+    两个路径都可能有 events.jsonl，默认值猜错就会报「没有日志」。
+    """
+    if config_path and os.path.isfile(config_path):
+        try:
+            import yaml
+            with open(config_path, encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            v = cfg.get("dsh_home")
+            if v:
+                return str(v)
+        except Exception:
+            pass
+    return os.environ.get("DSH_HOME") or "~/.dsh"
+
+
 def default_path(dsh_home):
-    home = os.path.expanduser(dsh_home or os.environ.get("DSH_HOME") or "~/.dsh")
+    home = os.path.expanduser(dsh_home or "~/.dsh")
     return os.path.join(home, "storages", "loop-guard", "events.jsonl")
 
 
@@ -88,14 +107,16 @@ def summarize(events, days, top):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--file", default="", help="events.jsonl 路径；默认 <DSH_HOME>/storages/loop-guard/events.jsonl")
-    ap.add_argument("--dsh-home", default="", help="不给则用 DSH_HOME 或 ~/.dsh")
+    ap.add_argument("--file", default="", help="events.jsonl 路径；默认 <dsh_home>/storages/loop-guard/events.jsonl")
+    ap.add_argument("--dsh-home", default="", help="不给则读 config.yaml 的 dsh_home，再退回 DSH_HOME / ~/.dsh")
+    ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    path = os.path.expanduser(a.file or default_path(a.dsh_home))
+    dsh_home = a.dsh_home or load_dsh_home(a.config)
+    path = os.path.expanduser(a.file or default_path(dsh_home))
     if not os.path.isfile(path):
         msg = (f"没有守卫日志：{path}\n"
                "原因通常是：① 装的是旧版守卫（v3 之前不写日志）；② 近几天没触发过提醒。\n"

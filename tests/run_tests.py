@@ -58,7 +58,15 @@ def put_session(home, sid, fixture, tmp):
     os.makedirs(d, exist_ok=True)
     src = os.path.join(FIX, fixture)
     dst = os.path.join(d, "session.v4.jsonl.zstd")
-    return compress(src, dst)
+    ok = compress(src, dst)
+    if ok:
+        # 测试要的是「刚产生的会话」，但 `zstd -f src -o dst` 会继承源文件的 mtime。
+        # 不归零的话，--days 1 的用例会随日历推移陆续变红（fixture 写于 2026-10-22）。
+        try:
+            os.utime(dst, None)
+        except OSError:
+            pass
+    return ok
 
 
 def write_cfg(path, home):

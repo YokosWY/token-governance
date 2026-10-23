@@ -3,6 +3,12 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.11.3 — 2026-10-24（日志定位 + 测试时间炸弹）
+- `guard_stats.py`：`--dsh-home` 未给时改为读 `config.yaml` 的 `dsh_home`（同 `schema_budget`），再退回 `DSH_HOME` / `~/.dsh`。多套客户端时官方版写 `~/.dsh`、发行版写自己的 home，默认值猜错会误报「没有守卫日志」
+- 测试修时间炸弹：`put_session` 落盘后把 mtime 归零到当前时间。`zstd -f src -o dst` 会继承源 fixture 的 mtime（2026-10-22），隔天再跑 `--days 1` 的 12 项用例全红——不是回归，是测试自己过期
+- 实测：`D:\AI\DSH-NEXT` 下守卫日志已写入（`ops_bash` 第 2 次，argsLen 83），`guard_stats.py` 直接读到正确的那份
+- 验收：测试 32/32、`audit_pack` 0 问题
+
 ## v0.11.2 — 2026-10-23（守卫计数 + 协议硬检查 + 重工具隔离）
 - 循环守卫新增命中计数落盘：每次真正追加提醒时往 `<DSH_HOME>/storages/loop-guard/events.jsonl` 写一行（工具名、第几次、参数哈希与长度，**不写参数内容**）；`logFile` 可改路径或关闭；写失败全程 fail-open，不影响工具调用
 - 新增 `scripts/guard_stats.py`：读 events.jsonl 出提醒次数 / 按工具 / 按日；无日志退出码 2 并给排查提示；坏行跳过
