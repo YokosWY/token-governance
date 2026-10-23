@@ -85,6 +85,23 @@ python scripts/preflight.py --config config.yaml
 4. **密钥先轮换、再清历史**：只删文件不轮换 = 没处理。
 5. **改配置前先备份，备份先脱敏**：补丁里常有明文 key，`.bak` 会复制一份。
 
+## 注入链体检（2026-10-23 基线，改完复测）
+
+宿主 DSH 把 `$DSH_HOME/AGENTS.md` 注入每步前缀，这是 TG 管不到的固定成本；能管的只有分层与顺序。
+
+| 环节 | 体积 | 频次 |
+|---|---|---|
+| `$DSH_HOME/AGENTS.md`（常驻） | 14.7 → **5.4 KB** | 每步 |
+| `$DSH_HOME/AGENTS-tasks.md`（按需） | 7.2 KB | 触发才读 |
+| `memory\CORE.md` | 2.7 KB | 每次会话 |
+| `memory\INDEX.md` | 3.6 KB | 按需 |
+
+口径与复测：
+
+- 两份 AGENTS（官方 home / NEXT）必须 md5 一致：`md5sum <两份路径>`。
+- 体积：`wc -c <四份路径>`。
+- 任务说明（雷达/周报/AnySearch/对话夹）留在 `AGENTS-tasks.md`，**不要塞回常驻**；常驻只放纪律 + 触发条件。
+
 ## 步数纪律（2026-10-22 实测）
 
 账单大头是「步数 × 每步上下文」，不是答案长度：8 天 10,150 步，cacheRead 占 43.7%、
