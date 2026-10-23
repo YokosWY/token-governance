@@ -5,7 +5,7 @@ English | [简体中文](README.md)
 A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
 usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
 
-10 skills, 20 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
+10 skills, 21 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
 Runs on the configuration layer of DeepSeek Harness.
 
 Day-to-day entry point: `python scripts/doctor.py` — one command folds schema size,
@@ -82,9 +82,9 @@ token-governance/
   config.example.yaml          # three required edits, rest optional
   data/metrics.json            # single source for document numbers
   skills/                      # 10 skills (9 idle by default)
-  scripts/                     # 20 scripts: check-up / measure / attribute / configure / quality
+  scripts/                     # 21 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 29 assertions + fixtures
+  tests/                       # 32 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate; Linux is a non-blocking probe
 ```
@@ -96,7 +96,7 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 29 assertions, standard library only
+python tests/run_tests.py             # 32 assertions, standard library only
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 

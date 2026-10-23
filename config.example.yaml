@@ -20,6 +20,10 @@ budget:
   daily: null
   weekly: null
 
+# 工具 schema 预算（KB）：超了 preflight 与 schema_budget --check 会报出来
+# 参考值：单机 174 个工具 / 154 KB；新装一个大 MCP 常一次涨 20–50 KB。0 = 关闭检查
+schema_budget_kb: 160
+
 # 价格表（可选）：measure_modules 按 token 折算时用；ledger 有实付时以实付为准
 prices_usd_per_mtok:
   input: 0.15
@@ -34,6 +38,7 @@ loop_guard:
   thresholds: [2, 4, 6]      # 第 2/4/6 次完全相同调用时追加提醒（不阻断）
   askUserAt: 6               # 到第几次才允许问用户一次
   argumentsPreviewChars: 0   # 0 = 只报参数长度，不把参数内容写进上下文（防密钥进日志）；排查时临时调大
+  logFile: ''                # 命中日志；空 = <DSH_HOME>/storages/loop-guard/events.jsonl，null 关闭
   exclude: [todo_write, job_output, job_list, job_kill, ask_user_question, send_message, present,
             http_request, mcp_connector_configure, mcp_connector_reconfigure, mcp_connector_import_json]
   include: []                # 非空时只对这些工具生效

@@ -33,6 +33,42 @@ description: "TG 循环守卫。同一工具 + 相同参数重复到阈值时按
 
 失败后重试前先分类：协议错误（`file has not been read` / `file changed since it was read` / `unknown tool`）不重试逻辑，先补 `read`、改成串行、换正确工具名——见 `docs/operations.md` 第二节。这类错误重试不解决问题，只会让整轮上下文重发。
 
+## 协议错误的硬检查（edit 前过一遍）
+
+协议错误不是判断失误，是顺序失误，所以能做成检查而不是提醒。每次 `edit` / `write` 之前逐条过：
+
+- [ ] 目标文件**本会话** `read` 过？没读过就先 `read`（大文件用 `offset` / `limit` 只读目标段）。
+- [ ] 这个文件此刻**只有我在改**？并行改同一文件，后一个必报 `file changed since it was read`。
+- [ ] 工具名在该会话的工具清单里？不臆造（`bash` / `opt_bash` 这类会报 `unknown tool`）。
+
+命中任一报错 → **停手，不重试**：
+
+| 报错 | 唯一正确动作 |
+|---|---|
+| `file has not been read` | `read` 目标段后再 edit |
+| `file changed since it was read` | 重读该文件，把改动 rebase 到新内容上再 edit |
+| `unknown tool` | 查工具清单换成正确名字，不猜第二个名字 |
+
+自检（连续两天为 0 才算做实）：
+
+```bash
+python scripts/failure_analysis.py --days 3 --protocol-only
+```
+
+## 命中统计（提醒到底有没有用）
+
+守卫只提醒不拦截，所以必须能回答「提醒了几次、之后有没有改」。每次真正追加提醒时，插件往
+`<DSH_HOME>/storages/loop-guard/events.jsonl` 写一行：时间、工具名、第几次、参数哈希与长度——
+**不写参数内容**（防凭据进日志）。
+
+```bash
+python scripts/guard_stats.py --days 7          # 提醒次数、按工具与按日
+python scripts/guard_stats.py --json            # 给别的脚本用
+```
+
+读法：某工具反复出现在第 2 次 → 阈值有效、但在反复踩同一条路；同一工具占到第 6 次 → 提醒没改变行为，
+该换通道而不是继续提醒。日志文件不存在时退出码 2，先确认装的是带统计的新版（`install_guard.py --status`）。
+
 ## 调参
 
 改 profile 里该插件的 config（`profiles/<name>/cordis.yml` 的 `loop-guard` 条目，或插件自带的 `cordis.patch.yml`）：
@@ -45,6 +81,7 @@ config:
   argumentsPreviewChars: 160 # 提醒里带的参数预览长度
   exclude: [todo_write, job_output, job_list, job_kill, ask_user_question, send_message, present]
   include: []                # 非空时只对这些工具生效
+  logFile: ''                # 命中日志：空 = <DSH_HOME>/storages/loop-guard/events.jsonl；null 关闭
 ```
 
 判断标准：提醒太频繁 → 阈值上移或把高频无害工具加进 `exclude`；一直不触发 → 检查参数是否每次都不同（很多"循环"其实是换参数重试，那种靠 AGENTS 的两次法则管）。

@@ -12,6 +12,13 @@
 """
 import argparse, json, os, re, statistics, subprocess, sys, time
 
+# Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 FAIL_EXIT = re.compile(r"\[exit code: ([1-9]\d*)\]")
 PROTOCOL = (
     "file has not been read",

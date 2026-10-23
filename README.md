@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v0.11.0-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v0.11.2-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-20-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-29-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-21-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-32-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、20 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
+> 10 个技能、21 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
 
 </div>
@@ -129,7 +129,7 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（20 个）
+### 脚本（21 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
@@ -137,11 +137,11 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | 看账 | `cost_summary` / `cache_audit` / `compare_days` | 花了多少、命中多少、按天趋势 |
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
 | 改配置 | `preflight` / `gen_preset_override` / `patch_snapshot` / `install_guard` | 装前查冲突、升级后重生成、改坏能回滚 |
-| 守质量 | `baseline` / `audit_pack` / `gen_metrics` / `check_yaml` / `new_session` | 首日基线、包自检、数字单源、会话卡 |
+| 守质量 | `baseline` / `audit_pack` / `gen_metrics` / `check_yaml` / `new_session` / `guard_stats` | 首日基线、包自检、数字单源、会话卡、守卫命中统计 |
 
 ### 插件（1 个）
 
-`plugins/dsh-loop-guard/`：零依赖 ESM 插件，`tools/post-execute` 阶段判「工具名 + 参数哈希」严格相等，按阈值追加一条内部提醒；不阻断调用、不弹窗、不结束会话。`verify_guard.mjs` 13 项离线断言，`install_guard.py` 幂等安装。
+`plugins/dsh-loop-guard/`：零依赖 ESM 插件，`tools/post-execute` 阶段判「工具名 + 参数哈希」严格相等，按阈值追加一条内部提醒；不阻断调用、不弹窗、不结束会话。每次真正发出提醒时往 `storages/loop-guard/events.jsonl` 追加一行（工具名、第几次、参数哈希与长度，**不含参数内容**），用 `guard_stats.py` 读。`verify_guard.mjs` 15 项离线断言，`install_guard.py` 幂等安装。
 
 ## 实现结构
 
@@ -151,9 +151,9 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 20 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量
-  plugins/dsh-loop-guard/      # 循环守卫插件源码
-  tests/                       # 29 项断言 + fixtures
+  scripts/                     # 21 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量
+  plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
+  tests/                       # 32 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
 ```
@@ -167,7 +167,7 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 29 项断言，纯标准库，不需要 pytest
+python tests/run_tests.py             # 32 项断言，纯标准库，不需要 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
@@ -271,6 +271,8 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
+| v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |
+| v0.11.1 | 需求澄清迁出为独立仓库 |
 | v0.11.0 | `doctor` 单入口 + `schema_budget` 归因与预算；CI；测试 29 项 |
 | v0.10.19 | README 按公开框架整改；补英文版、实现结构、安全与隐私、验收 |
 | v0.10.18 | 对外口径收口，移除本机工作流统计 |

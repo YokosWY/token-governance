@@ -5,6 +5,13 @@
 """
 import argparse, json, os, shutil, sys
 
+# 输出含中文与 JSON：Windows 控制台默认 GBK，固定 UTF-8，否则 --json 会被上游按 UTF-8 解成乱码。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 SKILLS = ["tg-router", "tg-cost", "tg-context", "tg-memory", "tg-memlib",
           "tg-orchestrate", "tg-gui", "tg-isolate", "tg-ops", "tg-loop"]
 
@@ -40,6 +47,7 @@ def expand(p, base=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--json", action="store_true", help="输出结构化体检结果（给 doctor / CI 用）")
     a = ap.parse_args()
 
     cfg = load_yaml(a.config)
@@ -156,8 +164,62 @@ def main():
     except Exception as e:  # 体检失败不影响预检
         cache_line = f"跳过（{e.__class__.__name__}: {e}）"
 
+    # 9. 工具 schema 预算（只读，不计入冲突、不改退出码）
+    schema_line, schema_info = None, None
+    try:
+        import schema_budget as sb
+        got = None
+        for p, cand in sb.pick_session(dsh_home, "", 7, limit=5):
+            got = sb.collect(p)
+            if got:
+                break
+        if got:
+            trows, steps = got
+            tot = sum(b for _, b in trows)
+            budget, bsrc, prices, rate = sb.load_budget(a.config)
+            groups = {}
+            for name, b in trows:
+                g = sb.group_of(name)
+                cur = groups.setdefault(g, {"tools": 0, "bytes": 0})
+                cur["tools"] += 1
+                cur["bytes"] += b
+            top = max(groups.items(), key=lambda kv: kv[1]["bytes"])
+            over = max(tot - budget * 1024, 0) if budget else 0
+            schema_info = {"schema_kb": round(tot / 1024, 1), "tools": len(trows),
+                           "budget_kb": budget, "over_budget_kb": round(over / 1024, 1),
+                           "top_group": top[0], "top_group_kb": round(top[1]["bytes"] / 1024, 1)}
+            if over:
+                schema_line = (f"{tot/1024:.0f} KB / {len(trows)} 个工具，超预算 {over/1024:.0f} KB"
+                               f"；最大块 {top[0]} {top[1]['bytes']/1024:.0f} KB"
+                               f" → python scripts/schema_budget.py 看归因")
+            else:
+                schema_line = (f"{tot/1024:.0f} KB / {len(trows)} 个工具，余量 {(budget-tot/1024):.0f} KB"
+                               f"；最大块 {top[0]} {top[1]['bytes']/1024:.0f} KB")
+        else:
+            schema_line = "无可用会话日志：正常用一天再看；或 python scripts/schema_budget.py --session <id>"
+    except Exception as e:  # 体检失败不影响预检
+        schema_line = f"跳过（{e.__class__.__name__}: {e}）"
+
     # 准入判定：放行 0 / 待确认 1 / 拒绝 2
     blocked = not os.path.isdir(skills_dir)
+    verdict = "拒绝" if blocked else ("待确认" if conflicts else "放行")
+    exit_code = 2 if blocked else (1 if conflicts else 0)
+
+    if a.json:
+        print(json.dumps({
+            "verdict": verdict, "exit_code": exit_code, "conflicts": conflicts,
+            "rows": [{"kind": k, "detail": d, "action": act} for k, d, act in rows],
+            "cache": cache_line, "schema": schema_line, "schema_detail": schema_info,
+            "skills_dir": skills_dir,
+        }, ensure_ascii=False, indent=2))
+        sys.exit(exit_code)
+
+    def health():
+        if cache_line:
+            print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
+        if schema_line:
+            print(f"\nschema 预算（只读，不阻断）：\n  {schema_line}")
+
     # 输出
     print("TG 准入预检（只读，未修改任何文件）\n")
     if blocked:
@@ -166,8 +228,7 @@ def main():
         sys.exit(2)
     if not rows:
         print("判定：放行（退出码 0）。")
-        if cache_line:
-            print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
+        health()
         return
     w1 = max(len(r[0]) for r in rows) + 2
     w2 = min(60, max(len(r[1]) for r in rows) + 2)
@@ -175,11 +236,9 @@ def main():
         print(f"  {k:<{w1}} {d[:w2]:<{w2}} → {act}")
     if conflicts:
         print(f"判定：待确认（退出码 1）。{conflicts} 项冲突，逐项裁决后再动手。")
-        if cache_line:
-            print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
+        health()
         sys.exit(1)
-    if cache_line:
-        print(f"\n缓存体检（只读，不阻断）：\n  {cache_line}")
+    health()
     print("\n判定：放行（退出码 0），按提示补齐即可。")
 
 

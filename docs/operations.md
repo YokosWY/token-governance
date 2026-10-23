@@ -100,3 +100,54 @@ python scripts/failure_analysis.py --config config.yaml --days 3 --protocol-only
 
 失败轮次的花费不是"多试一次"的钱，而是整轮上下文重发的钱：一轮失败会把该轮的每步前缀再算一遍。
 所以协议错误在账上按轮计，不按调用计——减少一次试错，省的是整轮。
+
+## 三、体检入口
+
+脚本一多，翻手册的成本会高于收益：十几个脚本各查一件事，实际一周只被调 1–4 次。
+因此把只读采集合成一个入口：
+
+```bash
+python scripts/doctor.py --days 7          # 结论 + 2–4 条动作（每条带命令与预估）
+python scripts/doctor.py --json            # 给 CI / 别的脚本
+python scripts/doctor.py --apply           # 只拍补丁快照 + 记首日基线，可回滚
+python scripts/doctor.py --print-actions   # 只演一遍 --apply 会做什么
+```
+
+`doctor` 不替代子脚本：它只做汇总与排序，细节仍回各自的脚本查。动作按「改了能立刻省」>「改了少犯错」
+排序，四个来源：schema 体积、失败轮次占比、技能 0 调用、缓存判据。
+
+### schema 预算与归因
+
+工具 schema 每步重发，是「每步成本」里最大的固定块，也最容易反弹——新装一个 MCP 回来几十 KB，
+隔离省下的空间会被悄悄吃回去。所以单列一条能卡预算的命令：
+
+```bash
+python scripts/schema_budget.py --top 12   # 按服务/族归因，给 KB 与占比
+python scripts/schema_budget.py --check    # 超 config.yaml 的 schema_budget_kb 时退出码 1
+```
+
+`preflight.py` 与 `doctor.py` 都会带这一项的只读结论，不参与冲突计数、不改退出码。
+字节取自 `request/header.tools`；token 换算按 0.4/字节粗估，只作量级——省的是每步重发量，与命中率分账。
+
+### 重工具隔离的落地路径
+
+MCP 工具走 connector 层，不进 `cordis.patch.yml`，所以不能像 GUI 那样做 preset。可用的三种力度：
+
+| 力度 | 做法 | 何时用 |
+|---|---|---|
+| 连接级 | 停用整个 connector | 整块长期不用 |
+| server 级 | `mcp_connector_policy` 对某个 server 设 `deny` | 高费低频（实测：siyuan 31 工具 / 26.6 KB，近 7 天只调 9 次） |
+| 会话级 | `mcp_connector_session_tools` 按会话临时激活，默认 30 分钟 | 偶尔要用一次 |
+
+server 级 deny 之后，需要时按会话激活，不必改回持久配置；`action=rollback` 可回滚到上一 revision。
+工具是「一个工具带多个 action」（如 `block` 同时管读与写）时，工具粒度拆不开，只能整块隔离。
+
+### 守卫命中的读法
+
+`python scripts/guard_stats.py --days 7`：
+
+- 同一工具反复出现在第 2 次 → 阈值有效，但仍在踩同一条路，该改方法而不是继续提醒。
+- 同一工具占到第 6 次 → 提醒没改变行为，换通道（bash ↔ pwsh、读文件 ↔ grep 定位）。
+- 日志不存在（退出码 2）→ 先确认装的是带统计的版本，或近几天根本没触发。
+
+日志只记工具名、第几次、参数哈希与长度，不记参数内容；读它不会把凭据带进上下文。

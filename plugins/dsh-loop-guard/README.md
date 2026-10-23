@@ -10,7 +10,20 @@
 | 观测方式 | 参数稳定序列化后取 sha1，前 16 位；同一 agent 维护一条链 |
 | 默认阈值 | 第 2 / 4 / 6 次重复各提醒一次（不阻断） |
 | 默认排除 | `todo_write`、`job_*`、`ask_user_question`、`send_message`、`present` |
-| 失败策略 | 任何异常 fail-open（不提醒、不影响调用） |
+| 命中日志 | `<DSH_HOME>/storages/loop-guard/events.jsonl`，每行一条；只记工具名、第几次、参数哈希与长度 |
+| 失败策略 | 任何异常 fail-open（不提醒、不影响调用、不因写日志失败中断） |
+
+## 命中统计
+
+日志是 append-only，一链只在 2 / 4 / 6 次各写一行，所以「行数 = 真正追加过的提醒数」。
+读它用：
+
+```bash
+python scripts/guard_stats.py --days 7     # 次数 / 按工具 / 按日
+```
+
+配置 `logFile: null` 可关闭写日志；`logFile: "<绝对路径>"` 可改落点。
+写日志全程 try/catch，磁盘满、目录不可写都不影响工具调用。
 
 ## 装到本机
 

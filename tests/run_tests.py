@@ -6,6 +6,14 @@
 """
 import json, os, subprocess, sys, tempfile
 
+# Windows 默认控制台是 GBK；测试会打印带替换字符的 detail，不固定编码会以
+# UnicodeEncodeError 崩掉（退出码 1，看起来像测试失败，其实是打印失败）。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "scripts")
 FIX = os.path.join(ROOT, "tests", "fixtures")
@@ -20,8 +28,11 @@ def check(name, cond, detail=""):
 
 
 def run(script, *args):
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"  # 子脚本也别在 GBK 控制台下崩
     return subprocess.run([PY, os.path.join(SCRIPTS, script), *args],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", env=env)
 
 
 def compress(src, dst):
@@ -197,7 +208,56 @@ def main():
     check("协议错误被单列", fp.get("protocol_failed_calls", 0) >= 1, str(fp.get("protocol_failed_calls")))
     check("协议错误只含一类工具", list((fp.get("by_tool") or {}).keys()) == ["edit"], str(fp.get("by_tool")))
 
-    # 12. 数字单源
+    # 12. schema 归因与预算
+    schhome = os.path.join(tmp, "schhome")
+    os.makedirs(os.path.join(schhome, "skills"), exist_ok=True)
+    put_session(schhome, "session-sch", "schema_session.jsonl", tmp)
+    scfg = os.path.join(tmp, "scfg.yaml")
+    write_cfg(scfg, schhome)
+    r = run("schema_budget.py", "--dsh-home", schhome, "--config", scfg, "--json")
+    try:
+        sb = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        sb = {}
+    foo = [g for g in (sb.get("groups") or []) if g.get("group") == "mcp:foo"]
+    check("schema 按服务归因", bool(foo) and foo[0].get("tools") == 2, str(sb.get("groups"))[:120])
+    check("schema 工具总数", sb.get("tools") == 4, str(sb.get("tools")))
+    r2 = run("schema_budget.py", "--dsh-home", schhome, "--config", scfg, "--check", "--budget-kb", "1")
+    r3 = run("schema_budget.py", "--dsh-home", schhome, "--config", scfg, "--check", "--budget-kb", "500")
+    check("超预算退出码 1", r2.returncode == 1, str(r2.returncode))
+    check("预算内退出码 0", r3.returncode == 0, str(r3.returncode))
+
+    # 13. doctor 单入口：采集失败也要出动作清单，不能崩
+    r = run("doctor.py", "--days", "1", "--json")
+    try:
+        doc = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        doc = {}
+    check("doctor 给出动作清单", isinstance(doc.get("actions"), list) and len(doc["actions"]) >= 1,
+          str(type(doc.get("actions"))))
+    check("doctor 缺数据不崩", r.returncode == 0, str(r.returncode))
+
+    # 14. 守卫命中统计（读 events.jsonl；坏行跳过）
+    gdir = os.path.join(tmp, "guard")
+    os.makedirs(gdir, exist_ok=True)
+    gpath = os.path.join(gdir, "events.jsonl")
+    with open(gpath, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": "2026-10-23T08:00:00+00:00", "tool": "read",
+                            "count": 2, "hash": "abc", "argsLen": 12}) + "\n")
+        f.write(json.dumps({"ts": "2026-10-23T09:00:00+00:00", "tool": "read",
+                            "count": 4, "hash": "abc", "argsLen": 12}) + "\n")
+        f.write("这不是 json\n")
+    r = run("guard_stats.py", "--file", gpath, "--days", "30", "--json")
+    try:
+        gs = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        gs = {}
+    check("守卫命中被统计", gs.get("events") == 2, str(gs.get("events")))
+    check("守卫坏行被跳过", gs.get("bad_lines") == 1, str(gs.get("bad_lines")))
+    check("守卫按工具聚合", (gs.get("top_tools") or [{}])[0].get("hits") == 2,
+          str(gs.get("top_tools")))
+
+    # 15. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
 

@@ -26,6 +26,11 @@ description: "tg 子技能 · 上下文工程：工具清单/技能目录/工具
 | 工具输出 | `spill-policy.maxInlineTokens` 落盘；pruner 只在压缩期裁 | >6 k tokens 落盘给路径 |
 | 压缩（安全阀，别当杠杆） | `thresholdRatio` + `retainRatio` | 462 k → 185 k，但见下节 |
 
+工具清单要能定位到「谁装上来的」：`python scripts/schema_budget.py --top 12` 出一个会话里
+工具 schema 按服务（`mcp:<server>`）、按工具族的 KB 排行，并对 `config.yaml` 的
+`schema_budget_kb` 卡预算（`--check` 超了退出码 1）。实测一台机器 174 个工具 / 150 KB，
+最大块是某个 MCP 的 27.7 KB —— 新装一个重 MCP 常一次涨 20–50 KB，比慢慢调阈值划算得多。
+
 ## 命中率是另一格（别和前四项混算）
 
 前三项降的是**每步重发量**；命中率降的是**未命中那一小块**，且价值随 provider 变：

@@ -3,6 +3,17 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.11.2 — 2026-10-23（守卫计数 + 协议硬检查 + 重工具隔离）
+- 循环守卫新增命中计数落盘：每次真正追加提醒时往 `<DSH_HOME>/storages/loop-guard/events.jsonl` 写一行（工具名、第几次、参数哈希与长度，**不写参数内容**）；`logFile` 可改路径或关闭；写失败全程 fail-open，不影响工具调用
+- 新增 `scripts/guard_stats.py`：读 events.jsonl 出提醒次数 / 按工具 / 按日；无日志退出码 2 并给排查提示；坏行跳过
+- `verify_guard.mjs` 13 → 15 项：新增「命中日志条数 = 提醒次数」「日志只含元数据、不含参数内容」；测试日志写临时目录，不污染真实文件
+- `install_guard.py`：复制前逐文件比对（原来只比 `index.js`，README / patch 的改动永远同步不过去）
+- `tg-loop` 新增「协议错误的硬检查」节：edit/write 前三问（本会话读过？只有我在改？工具名在清单？），三类报错各给唯一正确动作，并挂 `failure_analysis --protocol-only` 自检
+- `tg-loop` 新增「命中统计」节：读法（第 2 次反复 = 阈值有效但仍在踩同一条路；占到第 6 次 = 提醒没改变行为，该换通道）
+- 隔离落地：`siyuan` MCP 整块 deny（31 个工具 / 26.6 KB，近 7 天 83 会话只调用 9 次且全是 `http_request`）；用 `mcp_connector_policy` server 级 deny（revision 1，可回滚到 revision 0），需要时用 `mcp_connector_session_tools` 按会话激活 30 分钟
+- 配置模板补 `loop_guard.logFile`
+- 验收：测试 29 → 32 项全过、`audit_pack` 0 问题、`verify_guard` 15 项通过
+
 ## v0.11.1 — 2026-10-23（需求澄清迁出）
 - `clarify-needs/` 整体迁出到独立仓库 [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier) 的 `skill/clarify-needs/`，TG 不再维护它
 - TG 侧同步：README / README_EN 目录树去掉该行并加指向；`docs/concepts.md` 第五组术语加迁移说明

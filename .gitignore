@@ -15,6 +15,8 @@ __pycache__/
 *.pyc
 reports/
 tmp/
+# baseline.py --write 的本机基线（doctor --apply 会生成）
+tg-baseline.json
 
 # 宣传物 QA 产物
 promo/preview*/

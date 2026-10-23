@@ -13,6 +13,9 @@
 //   · 新用户消息到达时清空链（`agent/pre-step`）。
 //
 // 只依赖 node 内置模块；任何异常 fail-open（不提醒）。
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
 
 export const name = 'dsh-loop-guard'
@@ -25,6 +28,8 @@ const DEFAULTS = {
   include: [],
   argumentsPreviewChars: 160,
   askUserAt: 6,
+  // 命中计数落盘：空 = <DSH_HOME 或 ~/.dsh>/storages/loop-guard/events.jsonl；null/false = 关闭
+  logFile: '',
 }
 
 const SOURCE_KIND = 'loop-guard'
@@ -70,6 +75,27 @@ function preview(args, limit) {
     return text.length <= limit ? text : text.slice(0, limit) + `… (+${text.length - limit} more chars)`
   } catch {
     return '(unavailable)'
+  }
+}
+
+/** 命中计数落盘：只记工具名、第几次、参数哈希与长度，不写参数内容。 */
+function logPathOf(cfg) {
+  if (cfg.logFile === false || cfg.logFile === null) return null
+  if (typeof cfg.logFile === 'string' && cfg.logFile) return cfg.logFile
+  const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+  return join(home, 'storages', 'loop-guard', 'events.jsonl')
+}
+
+function record(cfg, tool, count, hash, argsLen) {
+  try {
+    const file = logPathOf(cfg)
+    if (!file) return
+    mkdirSync(dirname(file), { recursive: true })
+    appendFileSync(file, JSON.stringify({
+      ts: new Date().toISOString(), tool, count, hash, argsLen,
+    }) + '\n', 'utf8')
+  } catch {
+    /* 统计失败不影响会话 */
   }
 }
 
@@ -120,6 +146,7 @@ export function apply(ctx, config = {}) {
       const count = chain.count
       if (!thresholds.has(count) || chain.fired.has(count)) return undefined
       chain.fired.add(count)
+      record(cfg, tool, count, hash, stable(args).length)
       return notice(exec, count, args, cfg)
     } catch {
       return undefined

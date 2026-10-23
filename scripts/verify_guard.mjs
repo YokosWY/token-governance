@@ -3,7 +3,8 @@
 // 用法：node scripts/verify_guard.mjs
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -14,9 +15,13 @@ const upstream = 'D:/AI/DSH-NEXT/local-plugins/dsh-loop-guard/index.js'
 
 const { apply } = await import(new URL('../plugins/dsh-loop-guard/index.js', import.meta.url))
 
+// 命中日志写到临时目录：别污染真实 <DSH_HOME>/storages/loop-guard/events.jsonl
+const logDir = mkdtempSync(path.join(tmpdir(), 'guard-'))
+const logFile = path.join(logDir, 'events.jsonl')
+
 const handlers = new Map()
 const ctx = { on: (event, handler) => handlers.set(event, handler) }
-apply(ctx, { thresholds: [2, 4, 6], askUserAt: 6 })
+apply(ctx, { thresholds: [2, 4, 6], askUserAt: 6, logFile })
 
 const post = handlers.get('tools/post-execute')
 const pre = handlers.get('agent/pre-step')
@@ -68,7 +73,22 @@ assert.equal(lastNotice.source?.form, 'notice')
 assert.match(lastNotice.content?.[0]?.text ?? '', /【循环守卫】/)
 results.push('提醒消息形状 …… OK')
 
-// 6) 与上游代码是否一致（有上游才算）
+// 7) 命中日志：行数 = 真正发出的提醒数，且不含参数内容
+try {
+  const lines = existsSync(logFile)
+    ? readFileSync(logFile, 'utf8').split('\n').filter(Boolean)
+    : []
+  check('命中日志条数 = 提醒次数', lines.length, 4)
+  const rows = lines.map(l => JSON.parse(l))
+  assert.ok(rows.every(r => r.tool && r.count >= 2 && r.hash && typeof r.argsLen === 'number'),
+    '日志字段不全（tool / count / hash / argsLen）')
+  assert.ok(!lines.join('\n').includes('ls -la'), '日志里出现了参数内容，应只记哈希与长度')
+  results.push('命中日志只记元数据 …… OK')
+} finally {
+  rmSync(logDir, { recursive: true, force: true })
+}
+
+// 8) 与上游代码是否一致（有上游才算）
 if (existsSync(upstream)) {
   const sha = f => createHash('sha256').update(readFileSync(f)).digest('hex').slice(0, 12)
   const a = sha(vendored)

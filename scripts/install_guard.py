@@ -82,6 +82,7 @@ def status(home: Path, profile: str) -> int:
 def install(home: Path, profile: str, apply: bool) -> int:
     target = home / "local-plugins" / DIR_NAME
     pkg = home / "profiles" / profile / "package.json"
+    files = ("index.js", "package.json", "cordis.patch.yml", "README.md")
     if not SRC.exists():
         print(f"[FAIL] 源目录不存在：{SRC}")
         return 1
@@ -91,16 +92,18 @@ def install(home: Path, profile: str, apply: bool) -> int:
 
     print(f"home={home} profile={profile}")
     print(f"1) 复制 {SRC} -> {target}")
-    same = target.exists() and (target / "index.js").exists() and sha(target / "index.js") == sha(SRC / "index.js")
+    # 逐文件比对：只比 index.js 会让 README / patch 的改动永远同步不过去
+    same = target.exists() and all(
+        (target / f).exists() and sha(target / f) == sha(SRC / f) for f in files)
     if same:
         print("   内容相同，跳过")
     elif not apply:
         print("   （dry-run）会写入 index.js / package.json / cordis.patch.yml / README.md")
     else:
         target.mkdir(parents=True, exist_ok=True)
-        for f in ("index.js", "package.json", "cordis.patch.yml", "README.md"):
+        for f in files:
             shutil.copyfile(SRC / f, target / f)
-        print("   已复制 4 个文件")
+        print(f"   已复制 {len(files)} 个文件")
 
     data = read_json(pkg)
     deps = data.setdefault("dependencies", {})
