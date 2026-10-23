@@ -4,18 +4,22 @@
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
 ## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
-- 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这 8 件事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次
-- **口径统一为**：`--dsh-home` / `--home` > `config.yaml` 的 `dsh_homes` / `dsh_home` > `$DSH_HOME` > `~/.dsh`；相对路径按 config 目录解析，多 home 按真实路径去重。文档见 `docs/operations.md` 第四节，自检 `python scripts/tg_common.py` 打印解析链
-- 修掉的隐性问题（都是「读错 home → 报没有数据或数字偏小」，不是崩溃）：
-  - `measure_modules.py` / `schema_budget.py` 的 `--list` 分支把 `$DSH_HOME` 排在显式 `--dsh-home` 前面；同一脚本的 `--list` 与 `--session` 会读两个不同的 home
-  - `retry_patterns.py` 与 `measure_modules.py` 完全不读 config，默认落 `~/.dsh`：本机实测 30 天窗口 49 个会话 → 98 个（`~/.dsh` 是官方版 home，配置指向装载版的 `D:\AI\DSH-NEXT`）
-  - `baseline.py` / `cost_summary.py` 不读 `$DSH_HOME`；`cache_audit.py` 给了 `--config` 就再也不看环境变量；`compare_days.py` 把环境变量排在 config 之前；`install_guard.py` 没有 config 通道
-- 迁移到公共层的脚本：`baseline` / `cache_audit` / `compare_days` / `cost_summary` / `failure_analysis` / `guard_stats` / `install_guard` / `measure_modules` / `patch_snapshot` / `preflight` / `retry_patterns` / `schema_budget` / `skill_usage` / `turn_cost`；`audit_pack` / `doctor` 只换 UTF-8 出口
-- `retry_patterns.py` 新增 `--config`（原先没有），`measure_modules.py` 的 `--dsh-home` 默认值由 `~/.dsh` 改空串，否则显式参数总是「已给」，优先级形同虚设
-- `cost_summary.py` 的 YAML 读取改为 strict：配置写坏要当场报错，不能静默退回默认 home 再给一份错账（它原本就报错，公共层的容错默认值会把这个信号吞掉）
-- `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak*`。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随按运行顺序漂移
-- 测试 32 → 40：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ 1 项静态检查（脚本里不许再出现 `$DSH_HOME` 直读）
-- 验收：测试 40/40、`audit_pack` 0 问题、`gen_metrics --check` 通过；用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两个版本，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 输出逐字节一致（`retry_patterns` 因新增 `--config` 除外）
+- 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_yaml()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这些事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次
+- **口径统一为**：`--dsh-home` / `--home` > `config.yaml` 的 `dsh_homes` / `dsh_home` > `$DSH_HOME` > `~/.dsh`；多 home 按真实路径去重。相对路径两种语义：config 里的值按 config 目录解析，CLI 参数按当前目录解析。文档见 `docs/operations.md` 第四节，自检 `python scripts/tg_common.py` 打印解析链
+- **配置读不出来不再静默**：`load_config` 默认 strict——文件不存在属正常（返回 `{}`），文件在但 YAML 坏、或没装 pyyaml，一律报错退出并给排查提示。修前实测：同一份写坏的 config（`dsh_home: "D:\AI\DSH-NEXT"` 双引号写反斜杠）下，`baseline` / `cache_audit` / `compare_days` / `guard_stats` / `retry_patterns` / `schema_budget` 六个脚本 **rc=0 照常出报告**（读的是 `~/.dsh`），另外六个报错——同机两套互相矛盾的报表
+- 各脚本旧口径与实际变化（变好/变坏都列全，这是本版最该被质疑的部分）：
+  - `measure_modules.py`：`--list` 分支 `$DSH_HOME` 排在显式参数前；`--config` 默认空串所以默认不读 config。修后：默认 `config.yaml`，`--list` 与 `--session` 同一口径。本机 30 天：默认 **36 → 52** 个会话
+  - `schema_budget.py`：`--list` 分支同样 env 压参数；现在走 `tg_common`，`dsh_homes` 与相对路径也生效
+  - `retry_patterns.py`：完全不读 config，环境变量也没有，直接落 `~/.dsh`；新增 `--config`。本机 30 天：**49 → 99** 个会话
+  - `compare_days.py`：**唯一一处顺序翻转**（旧 `$DSH_HOME` > config，新 config > env），并新增 `--dsh-home` 压回。同一条 `DSH_HOME=~/.dsh` 命令，旧版报 +169.4%、新版报 −0.9%，方向相反——这是本版行为变化最大的一处，用户升级后第一次对比结论可能不同
+  - `baseline.py` / `cost_summary.py`：**新增** `$DSH_HOME` 通道（原本没有），语义是「配置缺 home 时才用它」，不是顺序翻转
+  - `cache_audit.py`：给 `--config` 时不再丢环境变量；`--home` 保持**并集**语义（显式 home 排前，config 的 home 仍计入），改成覆盖会少算一份账本、成本与命中率偏小——自审时试过覆盖，已回退
+  - `install_guard.py`：**新增** config 通道（原本只有 `--home` 与环境变量），本机目标从 `~/.dsh` 变成配置里的 `D:\AI\DSH-NEXT`（装到正确客户端）；config 坏时现在直接报错，不会静默指到另一个 home
+- `cost_summary` / `compare_days` / `preflight` 补 `--dsh-home`（README 一直写「用 --dsh-home 可以临时压过配置」，但这三个脚本原先没有这个开关）
+- `measure_modules.load_price_config` 与 `schema_budget.load_budget` 并进 `tg_common`，不再一个报「配置解析失败」、一个静默用默认
+- `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak`（按后缀与 `.bak-` / `.bak_` 判定，不误伤 `bakery.py`）。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随运行顺序漂移
+- 测试 32 → 48：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ **4 项端到端**（只给 config 不传 flag 时读 config、无 config 时退回 `$DSH_HOME`、`compare_days` 有开关可用、坏 config 下四个脚本必须报错）+ **2 项 AST 静态检查**（不许直读 `DSH_HOME`：`getenv` / 别名 / 下标 / 字符串拼接都覆盖，注释不误报；不许自己拼 `sessions` 路径）
+- 验收：测试 48/48、`audit_pack` 0 问题、`gen_metrics --check` 通过、`verify_guard` 15/15；**显式传 flag 的路径**用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两版，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 逐字节一致（`retry_patterns` 因新增 `--config` 除外）。**默认路径是有意变更的**（见上面 49→99、36→52），不适用「逐字节一致」这条
 
 ## v0.11.4 — 2026-10-24（顽固循环率 + 协议规则落在常驻层）
 - `guard_stats.py`：新增「参数链」口径——按 `(工具, 参数哈希)` 归链，取链内最高提醒次数，输出停在 2 / 升到 4 / 升到 6 的分布与**顽固率**（到第 6 次仍在重复的链占比）。这是「提醒没改变行为」的唯一可观测代理；口径写明不能证明之后是否止损

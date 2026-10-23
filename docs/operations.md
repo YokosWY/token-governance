@@ -161,13 +161,20 @@ server 级 deny 之后，需要时按会话激活，不必改回持久配置；`
 --dsh-home / --home  >  config.yaml 的 dsh_homes / dsh_home  >  $DSH_HOME  >  ~/.dsh
 ```
 
-- 相对路径按 `config.yaml` 所在目录解析；`~` 与环境变量都展开。
+- 相对路径两种语义：config 里的值按 config 目录解析，CLI 参数按当前目录解析。`~` 与环境变量都展开。
 - 显式参数永远压过配置与环境变量。v0.12.0 之前 `measure_modules`、`schema_budget` 的 `--list`
   分支把 `$DSH_HOME` 排在显式参数前面，同一个脚本的两条路径会读不同 home。
-- 机器上装两套客户端时最容易撞：「官方版写 `~/.dsh`、发行版写自己的 home」。配置指错了不会报错，
-  只会给出「没有数据」或偏小的数字。
+- **配置读不出来一律报错**（文件不存在除外）。配置文件在、但 YAML 写坏或没装 pyyaml 时，
+  `load_config` 直接退出并给排查提示；不再「静默退回 `~/.dsh` 交一份看起来正常的报表」。
+  最常见的坏法是双引号里写 Windows 反斜杠：`dsh_home: "D:\AI\DSH-NEXT"`，改用正斜杠或单引号。
+- 机器上装两套客户端时最容易撞：「官方版写 `~/.dsh`、发行版写自己的 home」。顺序定死之后，
+  读哪一份是可预测的；要临时换，用 `--dsh-home`（`cost_summary` / `compare_days` / `preflight`
+  在 v0.12.0 补上了这个开关）。
+- 注意 `compare_days.py` 是本版唯一一处优先级翻转（旧 `$DSH_HOME` > config，新 config > env）。
+  升级后第一次对比若两天数字与以前不同，先确认读的是哪份 ledger。
 - 自检：`python scripts/tg_common.py` 打印解析链与每个 home 的 `sessions` 是否存在；测试套件里有
-  6 项用例锁这条顺序，还有一项静态检查拦「脚本里再手写 `DSH_HOME`」。
+  6 项用例锁这条顺序、4 项端到端（只给 config / 退回环境变量 / 开关可压 / 坏配置报错）、
+  2 项 AST 静态检查（不许直读 `DSH_HOME`、不许自己拼 `sessions` 路径）。
 
 改了这条顺序等于改所有脚本的读数口径：先改 `tg_common.py`，再跑测试与 `audit_pack`，别在单个脚本里绕过。
 
