@@ -7,6 +7,13 @@
 """
 import argparse, os, re, subprocess, sys
 
+# 输出含中文，Windows 控制台默认 GBK：固定成 UTF-8，避免打包到没有 PYTHONIOENCODING 的环境就崩。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 STALE = ["Metron", "Tessera", "metron", "tessera", "tg-guard", "metron-", "90% 规则"]
 
 
@@ -80,8 +87,11 @@ def check(label, root, issues):
                     issues.append((label, "中", f"{rel} 引用不存在的 {ref}"))
         local_ids = [v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
                                  os.environ.get("COMPUTERNAME")) if v and len(v) > 2]
-        if local_ids and any(v in s for v in local_ids):
-            issues.append((label, "高", f"含本机用户名/主机名: {rel}"))
+        if local_ids:
+            # URL 里的 GitHub 账号是公开仓库地址，不算本机标识泄露；其余位置照查。
+            body_no_url = re.sub(r"https?://[^\s)\"'>]+", "", s)
+            if any(v in body_no_url for v in local_ids):
+                issues.append((label, "高", f"含本机用户名/主机名: {rel}"))
         if (label == "TG" and base != "CHANGELOG.md"
                 and re.search(r"D:\\?AI", s) and "portable-vs-local" not in f):
             issues.append((label, "中", f"TG 出现绝对路径: {rel}"))

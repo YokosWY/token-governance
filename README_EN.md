@@ -5,8 +5,11 @@ English | [简体中文](README.md)
 A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
 usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
 
-10 skills, 18 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
+10 skills, 20 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
 Runs on the configuration layer of DeepSeek Harness.
+
+Day-to-day entry point: `python scripts/doctor.py` — one command folds schema size,
+cache, cost and failures into one page with ranked actions and their estimates.
 
 ## Highlights
 
@@ -68,6 +71,8 @@ plugin-name drift.
 | Cache headroom | `cache_audit --days 3` | hit rate, misses per step, miss cost share |
 | Did the change help | `baseline --write` then `--compare` | start context, schema, catalog |
 | Is the config still aligned | `preflight --config` | preset drift, plugin-name drift |
+| One-page check-up | `doctor --days 7` | size, cache, cost, failures + ranked actions |
+| Who eats the schema | `schema_budget` | per-server attribution, KB budget |
 
 ## Layout
 
@@ -77,22 +82,27 @@ token-governance/
   config.example.yaml          # three required edits, rest optional
   data/metrics.json            # single source for document numbers
   skills/                      # 10 skills (9 idle by default)
-  scripts/                     # 18 scripts: measure / attribute / configure / quality
+  scripts/                     # 20 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 23 assertions + fixtures
+  tests/                       # 29 assertions + fixtures
   docs/                        # 5 documents
-  clarify-needs/               # sibling project (requirements clarification, preview)
+  .github/workflows/ci.yml     # Windows gate; Linux is a non-blocking probe
 ```
+
+> `clarify-needs` moved out in v0.11.1 into its own repo:
+> [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier) (`skill/clarify-needs`).
 
 ## Verification
 
 ```bash
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 23 assertions, standard library only
+python tests/run_tests.py             # 29 assertions, standard library only
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
-All three are read-only and fail with a non-zero exit code.
+All three are read-only and fail with a non-zero exit code. The Windows CI job runs the
+same three commands as a merge gate; Linux is probed but does not block, because the
+acceptance environment is Windows.
 
 ## Limits
 

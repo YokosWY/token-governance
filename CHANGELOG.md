@@ -3,6 +3,24 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.11.1 — 2026-10-23（需求澄清迁出）
+- `clarify-needs/` 整体迁出到独立仓库 [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier) 的 `skill/clarify-needs/`，TG 不再维护它
+- TG 侧同步：README / README_EN 目录树去掉该行并加指向；`docs/concepts.md` 第五组术语加迁移说明
+- 理由：它是常驻技能、有独立版本节奏，跟着 TG 发版只会互相拖累
+
+## v0.11.0 — 2026-10-23（体检入口 + schema 预算 + CI）
+- 新增 `scripts/doctor.py`：一条命令把 preflight / schema_budget / skill_usage / failure_analysis / turn_cost 汇成一页，按收益排序给 2–4 条动作（每条带命令与预估）；`--json` 给机读，`--apply` 只做补丁快照 + 首日基线两件可回滚的事，`--print-actions` 只演不做
+- 新增 `scripts/schema_budget.py`：工具 schema 按服务（`mcp:<server>`）与工具族归因，出 KB / 占比 / 单工具 Top；`--check` 对 `schema_budget_kb` 卡预算并退出 1
+- `preflight.py`：新增第 9 项 schema 预算体检（只读、不计入冲突、不改退出码）；新增 `--json`（含 rows / cache / schema / verdict）
+- `config.example.yaml` + `README` 配置段：新增 `schema_budget_kb`（默认 160，0 = 关闭）
+- 工程化：`tests/run_tests.py` 与 `audit_pack.py` 固定 UTF-8 输出（GBK 控制台下曾以 `UnicodeEncodeError` 崩掉，看起来像测试失败）；子进程传 `PYTHONIOENCODING=utf-8`
+- 新增 `.github/workflows/ci.yml`：Windows 上跑测试 29 项 + audit_pack 作为门禁；Linux 只做探测、不阻塞（验收环境是 Windows）
+- 测试 23 → 29 项：新增 schema 归因 / 工具总数 / 超预算与预算内退出码 / doctor 动作清单 / doctor 缺数据不崩；新增 fixture `schema_session.jsonl`
+- 文档同步：README 脚本 18 → 20、测试 23 → 29、加 CI 徽章与 doctor 示例；README_EN 同步；`docs/operations.md` 新增第三节「体检入口」；`tg-cost` / `tg-context` / `tg-router` 挂上新入口
+- 边界：`clarify-needs/` 明确为姊妹项目（独立版本号、独立 CHANGELOG），不并入 TG 的 10 个技能与 20 个脚本
+- 口径：schema 归因的 token 换算按 0.4 token/字节粗估，只作量级；省的是每步重发量，与缓存命中率分账
+- 验收：`audit_pack` 0 问题、测试 29/29（未设 `PYTHONIOENCODING` 的 GBK 控制台下同样通过）
+
 ## v0.10.20 — 2026-10-23（注入链分层 + clarify-needs 五档）
 - `tg-router` 新增「注入链体检」节：宿主 `AGENTS.md` 常驻 14.7 KB → 5.4 KB 的分层基线、任务说明下沉 `AGENTS-tasks.md`（按触发读）、两份副本 md5 校验与四文件体积复测命令
 - `clarify-needs` v3.0：四档 L0–L3 → **五档 off/low/high/max/ultra**，模式并入档位，默认 `high`（详见 `clarify-needs/CHANGELOG.md`）

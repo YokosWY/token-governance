@@ -5,10 +5,11 @@
 **简体中文** | [English](README_EN.md)
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
-<img alt="version" src="https://img.shields.io/badge/version-v0.10.19-4b6fff?style=flat-square">
+<img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
+<img alt="version" src="https://img.shields.io/badge/version-v0.11.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-18-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-23-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-20-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-29-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -21,7 +22,8 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、18 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
+> 10 个技能、20 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
+> 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
 
 </div>
 
@@ -60,6 +62,16 @@ $ python scripts/turn_cost.py --config config.yaml --days 3
 
 $ python scripts/preflight.py --config config.yaml
 判定：放行（退出码 0），按提示补齐即可。
+
+$ python scripts/doctor.py --days 7
+TG 体检 · 2026-10-23 16:23（回看 7 天）
+  预检      待确认（13 项待裁决，明细见 preflight）
+  体积      150.2 KB / 174 个工具（预算 160 KB）
+  缓存      命中率 98.8% | 未命中 2630/步 | 每步上下文 228k | k=50.0 | 未命中占成本 37%
+  任务成本  中位 ¥0.06 / P90 ¥0.2204 / 共 ¥47.5762（505 轮）
+  失败      159 轮有失败调用，共 270 次
+动作（4 条，按收益排序）
+  [1] 低  schema 接近预算上限 …（每条都给命令与预估）
 ```
 
 `preflight` 的判定分三档：**放行 0 / 待确认 1 / 拒绝 2**。冲突项逐条列出，包括同名技能、非空记忆根、已存在的补丁条目、覆盖块漂移与插件名漂移。
@@ -117,10 +129,11 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（18 个）
+### 脚本（20 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
+| 体检 | `doctor` / `schema_budget` | 一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
 | 看账 | `cost_summary` / `cache_audit` / `compare_days` | 花了多少、命中多少、按天趋势 |
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
 | 改配置 | `preflight` / `gen_preset_override` / `patch_snapshot` / `install_guard` | 装前查冲突、升级后重生成、改坏能回滚 |
@@ -138,12 +151,15 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 18 个脚本：看账 / 拆账 / 改配置 / 守质量
+  scripts/                     # 20 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量
   plugins/dsh-loop-guard/      # 循环守卫插件源码
-  tests/                       # 23 项断言 + fixtures
+  tests/                       # 29 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
-  clarify-needs/               # 姊妹项目（需求澄清，预发）
+  .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
 ```
+
+> 需求澄清技能 `clarify-needs` 已于 v0.11.1 迁出，独立仓库：
+> [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier)（`skill/clarify-needs`）。
 
 数据流：会话日志（`sessions/**/session.v4.jsonl.zstd`）与账本（`storages/cost-meter/ledger.json`）→ 计量脚本 → 报告与文档表格。所有脚本只读，不写用户的会话与账本。
 
@@ -151,11 +167,16 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 23 项断言，纯标准库，不需要 pytest
+python tests/run_tests.py             # 29 项断言，纯标准库，不需要 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
+python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、文档数字一致、包自检。
+三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、文档数字一致、包自检。
+
+`.github/workflows/ci.yml` 在 Windows 上跑同一套命令作为合并门禁；Linux 只做探测（不阻塞），因为验收环境是 Windows。
+
+`doctor --apply` 只执行两件可回滚的事：拍补丁快照、记首日基线。它不改 `cordis.patch.yml`、不删技能、不动 preset——这些要人裁决。
 
 ### 案例：一台机器上的改前改后
 
@@ -193,6 +214,8 @@ skills_dir: "~/.dsh/skills"    # 技能目录
 budget:
   daily: null                  # 单日超了就提醒，null 关闭
 
+schema_budget_kb: 160          # 工具 schema 预算；超了 preflight / doctor 会报出来，0 = 关闭
+
 prices_usd_per_mtok:           # 折算用；有实付账本时以账本为准
   input: 0.15
   cached: 0.003
@@ -218,7 +241,7 @@ loop_guard:
 - **覆盖块是快照**：组合配置每次启动重写，升级后要重跑 `gen_preset_override.py`。
 - **不看账本不下结论**：schema 变小、命中率上升都只是过程量。
 - **压缩不是杠杆**：低水位只会增加前缀重算次数；只有接近窗口上限时才值得触发。
-- **不接管安全与需求澄清**：密钥、脱敏、上传门禁属本地约束；需求澄清在 `clarify-needs/`。
+- **不接管安全与需求澄清**：密钥、脱敏、上传门禁属本地约束；需求澄清已独立成 [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier)。
 
 ## 安全与隐私
 
@@ -248,6 +271,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
+| v0.11.0 | `doctor` 单入口 + `schema_budget` 归因与预算；CI；测试 29 项 |
 | v0.10.19 | README 按公开框架整改；补英文版、实现结构、安全与隐私、验收 |
 | v0.10.18 | 对外口径收口，移除本机工作流统计 |
 | v0.10.16 | 文档 11 → 5 篇；协议纪律；数字单源 |
