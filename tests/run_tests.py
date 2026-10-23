@@ -297,71 +297,118 @@ def main():
     check("dsh_home：多个 home 按真实路径去重",
           len(tg_common.resolve_dsh_homes("", cfg={"dsh_homes": [tmp, tmp + os.sep]}, base=tmp)) == 1)
 
-    # 口径不许再手写：静态检查走 AST，子串匹配会漏 getenv / 别名 / 字符串拼接，还会误报注释
+    # 口径不许再手写：静态检查走「常量折叠 + 结构位置」，子串匹配会漏别名/拼接/setdefault，
+    # 还会把注释里的示例误报。折叠函数把 "DSH_" + "HOME"、f"{a}sessions" 还原成字面量。
     import ast
 
-    def env_home_reads(tree):
-        """找出所有读 DSH_HOME 的表达式：os.environ.get/x[] / os.getenv / 别名调用。"""
-        hits = []
+    def const_str(node):
+        """能静态求值的字符串就求出来：Constant / "a"+"b" / 纯字面 f-string。"""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            a, b = const_str(node.left), const_str(node.right)
+            if a is not None and b is not None:
+                return a + b
+        if isinstance(node, ast.JoinedStr):
+            parts = []
+            for v in node.values:
+                if isinstance(v, ast.FormattedValue):
+                    return None
+                p = const_str(v)
+                if p is None:
+                    return None
+                parts.append(p)
+            return "".join(parts)
+        return None
 
-        def is_dsh(node):
-            return isinstance(node, ast.Constant) and node.value == "DSH_HOME"
-
-        aliases = set()
+    def code_strings(tree):
+        """文件里所有「出现在可执行位置」的字符串字面量（跳过 docstring）。"""
+        docs = set()
         for node in ast.walk(tree):
-            # from os import environ as E
-            if isinstance(node, ast.ImportFrom) and node.module == "os":
-                for al in node.names:
-                    if al.name in ("environ", "getenv"):
-                        aliases.add(al.asname or al.name)
-            # import os as o
-            if isinstance(node, ast.Import):
-                for al in node.names:
-                    if al.name == "os":
-                        aliases.add(al.asname or "os")
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                body = getattr(node, "body", [])
+                if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+                        and isinstance(body[0].value.value, str):
+                    docs.add(id(body[0].value))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                f = node.func
-                # os.environ.get("DSH_HOME") / E.get("DSH_HOME") / os.getenv("DSH_HOME")
-                if isinstance(f, ast.Attribute) and f.attr in ("get", "getenv", "pop"):
-                    if node.args and is_dsh(node.args[0]):
-                        hits.append(getattr(node, "lineno", 0))
-                # getenv("DSH_HOME")
-                elif isinstance(f, ast.Name) and f.id == "getenv":
-                    if node.args and is_dsh(node.args[0]):
-                        hits.append(getattr(node, "lineno", 0))
-            # os.environ["DSH_HOME"] / E["DSH_HOME"]
-            if isinstance(node, ast.Subscript):
-                sl = node.slice
-                if is_dsh(sl) or (isinstance(sl, ast.Index) and is_dsh(getattr(sl, "value", None))):  # py<3.9
-                    hits.append(getattr(node, "lineno", 0))
-        return sorted(set(hits))
+            if id(node) in docs:
+                continue
+            s = const_str(node)
+            if s is not None:
+                yield node, s
 
-    offenders = []
+    def ast_find(path):
+        """返回 (DSH_HOME 读取行, sessions 拼接行)。"""
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        home_lines, sess_lines = [], []
+        for node, s in code_strings(tree):
+            if s == "DSH_HOME":  # 只认「整个字面量就是键名」；帮助文本里的 $DSH_HOME 示例不算
+                home_lines.append(getattr(node, "lineno", 0))
+        for node in ast.walk(tree):
+            hit = False
+            # os.path.join(..., "sessions")
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr == "join":
+                hit = any(const_str(a) == "sessions" for a in node.args)
+            # Path(home) / "sessions"
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+                hit = const_str(node.right) == "sessions"
+            # f"{home}/sessions"
+            elif isinstance(node, ast.JoinedStr):
+                hit = any(const_str(v) in ("sessions", "/sessions", "\\sessions")
+                          for v in node.values if not isinstance(v, ast.FormattedValue))
+            if hit:
+                sess_lines.append(getattr(node, "lineno", 0))
+        return sorted(set(home_lines)), sorted(set(sess_lines))
+
+    offenders, builders = [], []
     for fn in sorted(os.listdir(SCRIPTS)):
         if not fn.endswith(".py") or fn == "tg_common.py":
             continue
-        src = open(os.path.join(SCRIPTS, fn), encoding="utf-8").read()
+        p = os.path.join(SCRIPTS, fn)
         try:
-            tree = ast.parse(src)
+            home_lines, sess_lines = ast_find(p)
         except SyntaxError as e:
             offenders.append(f"{fn}(语法错误 {e.lineno})")
             continue
-        for line in env_home_reads(tree):
-            offenders.append(f"{fn}:{line}")
+        offenders += [f"{fn}:{n}" for n in home_lines]
+        builders += [f"{fn}:{n}" for n in sess_lines]
     check("没有脚本再手写 DSH_HOME 解析", not offenders, ", ".join(offenders))
-
-    # 拼 sessions 路径也只允许在 tg_common（按 AST 找 join(..., "sessions")，不误伤 JSON 键）
-    builders = []
-    for fn in sorted(os.listdir(SCRIPTS)):
-        if not fn.endswith(".py") or fn == "tg_common.py":
-            continue
-        tree = ast.parse(open(os.path.join(SCRIPTS, fn), encoding="utf-8").read())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join":
-                if any(isinstance(a, ast.Constant) and a.value == "sessions" for a in node.args):
-                    builders.append(f"{fn}:{getattr(node, 'lineno', 0)}")
     check("没有脚本再自己拼 sessions 路径", not builders, ", ".join(builders))
+
+    # 这两条静态检查自己要能抓住常见绕法（变异用例，不写仓库文件）
+    samples = {
+        "getenv": 'import os\nx = os.getenv("DSH_HOME")\n',
+        "setdefault": 'import os\nos.environ.setdefault("DSH_HOME", "x")\n',
+        "concat": 'import os\nx = os.environ.get("DSH_" + "HOME")\n',
+        "alias": 'from os import getenv as g\nx = g("DSH_HOME")\n',
+        "subscript": 'import os\nx = os.environ["DSH_HOME"]\n',
+        "comment-only": '# os.environ.get("DSH_HOME") 只是注释\nx = 1\n',
+    }
+    for name, code in samples.items():
+        sm = os.path.join(tmp, f"static_{name}.py")
+        with open(sm, "w", encoding="utf-8") as f:
+            f.write(code)
+        hits, _ = ast_find(sm)
+        if name == "comment-only":
+            check(f"静态检查不误报注释（{name}）", not hits, str(hits))
+        else:
+            check(f"静态检查能抓住 {name} 写法", bool(hits), "漏了")
+    sess_samples = {
+        "join": 'import os\np = os.path.join(h, "sessions")\n',
+        "fstring": 'p = f"{h}/sessions"\n',
+        "pathdiv": 'from pathlib import Path\np = Path(h) / "sessions"\n',
+        "json-key": 'out = {"sessions": 3}\n',
+    }
+    for name, code in sess_samples.items():
+        sm = os.path.join(tmp, f"sess_{name}.py")
+        with open(sm, "w", encoding="utf-8") as f:
+            f.write(code)
+        _, s_hits = ast_find(sm)
+        if name == "json-key":
+            check(f"sessions 检查不误报 JSON 键（{name}）", not s_hits, str(s_hits))
+        else:
+            check(f"sessions 检查能抓住 {name} 写法", bool(s_hits), "漏了")
 
     # 18. 端到端：只给 config、不传 --dsh-home 时必须读 config 指的那份 home
     e2e_home = os.path.join(tmp, "e2e-home")
@@ -406,15 +453,49 @@ def main():
     r = run("compare_days.py", "--config", e2e_cfg, "--dsh-home", os.path.join(tmp, "nope"), "--days", "2")
     check("compare_days 能用 --dsh-home 压过 config", r.returncode != 0, f"rc={r.returncode}")
 
-    # 配置写坏时必须报错，不能静默换 home 出数
+    # 配置写坏时必须报错，不能静默换 home 出数。按「所有接受 --config 的脚本」遍历，
+    # 并把清单与 scripts/ 的实际 argparse 选项对账（漏一个就红，避免只测 4 个的假绿）。
     bad_cfg = os.path.join(tmp, "bad.yaml")
     with open(bad_cfg, "w", encoding="utf-8") as f:
-        f.write('dsh_home: "D:\\AI\\DSH-NEXT"\n')  # 双引号里的反斜杠 = YAML 转义，必坏
-    for script in ("guard_stats.py", "baseline.py", "retry_patterns.py", "schema_budget.py"):
-        r = run(script, "--config", bad_cfg)
-        check(f"配置写坏时 {script} 报错而不是换 home",
-              r.returncode != 0 and ("YAML" in (r.stderr or "") or "读不了" in (r.stderr or "")),
-              f"rc={r.returncode}")
+        f.write('dsh_home: "C:\\dsh-next"\n')  # 双引号里的反斜杠 = YAML 转义，必坏
+    list_cfg = os.path.join(tmp, "list.yaml")
+    with open(list_cfg, "w", encoding="utf-8") as f:
+        f.write("- a\n- b\n")                 # 顶层不是映射
+    gbk_cfg = os.path.join(tmp, "gbk.yaml")
+    with open(gbk_cfg, "wb") as f:
+        f.write('dsh_home: "D:/x"\nmemory_root: "~/记忆"\n'.encode("gbk"))
+
+    config_scripts = ("baseline.py", "cache_audit.py", "compare_days.py", "cost_summary.py",
+                      "failure_analysis.py", "guard_stats.py", "measure_modules.py",
+                      "patch_snapshot.py", "preflight.py", "retry_patterns.py",
+                      "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py")
+    # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
+    declared = set()
+    for fn in os.listdir(SCRIPTS):
+        if fn.endswith(".py") and fn != "tg_common.py" and "--config" in open(os.path.join(SCRIPTS, fn), encoding="utf-8").read():
+            declared.add(fn)
+    check("坏配置用例覆盖所有带 --config 的脚本", declared <= set(config_scripts),
+          f"漏: {sorted(declared - set(config_scripts))}")
+
+    extra = {"new_session.py": ("__probe__", "sid1")}
+    for script in config_scripts:
+        args = list(extra.get(script, ())) + ["--config", bad_cfg]
+        r = run(script, *args)
+        ok = r.returncode != 0 and ("YAML" in (r.stderr or "") or "读不了" in (r.stderr or ""))
+        check(f"坏配置：{script} 报错", ok, f"rc={r.returncode} err={(r.stderr or '')[:60]}")
+        r = run(script, *list(extra.get(script, ())), "--config", list_cfg)
+        check(f"顶层非映射：{script} 报错", r.returncode != 0, f"rc={r.returncode}")
+        r = run(script, *list(extra.get(script, ())), "--config", gbk_cfg)
+        check(f"GBK 配置：{script} 报错且不抛 traceback",
+              r.returncode != 0 and "Traceback" not in (r.stderr or ""), f"rc={r.returncode}")
+
+    # 坏配置下 new_session 不许在 ~/tg-memory 建目录
+    probe_root = os.path.join(os.path.expanduser("~"), "tg-memory", "__probe_test__")
+    if os.path.isdir(probe_root):
+        import shutil as _sh
+        _sh.rmtree(probe_root, ignore_errors=True)
+    r = run("new_session.py", "__probe_test__", "sid1", "--config", bad_cfg)
+    check("坏配置下 new_session 不建目录", not os.path.isdir(probe_root), f"rc={r.returncode}")
 
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")

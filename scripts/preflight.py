@@ -26,13 +26,27 @@ def load_yaml(path):
     import yaml as y
     try:
         with open(path, encoding="utf-8") as f:
-            return y.safe_load(f) or {}
+            data = y.safe_load(f)
+    except UnicodeDecodeError as e:
+        print(f"拒绝：{path} 不是 UTF-8（{e}）。\n"
+              "Windows 记事本默认可能存成 GBK/ANSI：另存为 UTF-8 再重跑。", file=sys.stderr)
+        sys.exit(2)
     except y.YAMLError as e:
         first = str(e).splitlines()[0]
         print(f"拒绝：{path} 不是合法 YAML（{first}）。\n"
               "Windows 路径请用正斜杠 C:/Users/... 或单引号 'C:\\Users\\...'；"
               "双引号里的反斜杠会被当成转义。", file=sys.stderr)
         sys.exit(2)
+    except OSError as e:
+        print(f"拒绝：{path} 读不了（{e}）。", file=sys.stderr)
+        sys.exit(2)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        print(f"拒绝：{path} 顶层不是映射（读到 {type(data).__name__}），配置应当是 key: value 形式。",
+              file=sys.stderr)
+        sys.exit(2)
+    return data
 
 
 def expand(p, base=None):

@@ -12,7 +12,7 @@
 """
 import argparse, datetime, os, shutil, sys
 
-from tg_common import config_base, resolve_dsh_home, utf8_stdio
+from tg_common import config_base, load_config, resolve_dsh_home, utf8_stdio
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
@@ -21,13 +21,9 @@ STORE = ("backup", "patch")
 
 
 def load_cfg(path):
-    if not os.path.isfile(path):
-        return {}
-    try:
-        import yaml
-        return yaml.safe_load(open(path, encoding="utf-8")) or {}
-    except Exception as e:
-        sys.exit(f"{path} 读不了：{str(e).splitlines()[0]}")
+    """配置交给 tg_common：坏 YAML / 编码坏 / 顶层不是映射都报错，不静默换 home 去拍错补丁。"""
+    cfg, _base = load_config(path)
+    return cfg
 
 
 def paths(cfg, home_arg, profile, config_path="config.yaml"):

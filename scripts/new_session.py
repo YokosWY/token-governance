@@ -5,19 +5,17 @@
 """
 import argparse, datetime, os, shutil
 
+from tg_common import expand, load_config, utf8_stdio
+
+utf8_stdio()
+
 
 def memory_root(config_path):
-    if os.path.isfile(config_path):
-        try:
-            import yaml
-            cfg = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
-            if cfg.get("memory_root"):
-                s = os.path.expanduser(os.path.expandvars(str(cfg["memory_root"])))
-                if not os.path.isabs(s):
-                    s = os.path.join(os.path.dirname(os.path.abspath(config_path)), s)
-                return os.path.normpath(s)
-        except Exception:
-            pass
+    """config 的 memory_root；配置写坏直接报错，绝不静默落回 ~/tg-memory 乱建目录。"""
+    cfg, base = load_config(config_path)
+    v = cfg.get("memory_root")
+    if v:
+        return expand(v, base)
     return os.path.expanduser("~/tg-memory")
 
 FILES = {

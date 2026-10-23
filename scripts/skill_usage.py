@@ -12,7 +12,7 @@
 """
 import argparse, json, os, re, subprocess, sys, time
 
-from tg_common import config_base, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import config_base, load_config, resolve_dsh_home, sessions_root, utf8_stdio
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
@@ -135,15 +135,8 @@ def main():
 
     home_arg = a.dsh_home
     skills_dir = a.skills_dir
-    cfg = {}
-    if os.path.isfile(a.config):
-        try:
-            import yaml
-            cfg = yaml.safe_load(open(a.config, encoding="utf-8")) or {}
-        except Exception as e:
-            sys.exit(f"{a.config} 读不了：{str(e).splitlines()[0]}")
-        skills_dir = skills_dir or cfg.get("skills_dir") or ""
-    base = config_base(a.config)
+    cfg, base = load_config(a.config)
+    skills_dir = skills_dir or cfg.get("skills_dir") or ""
     home = resolve_dsh_home(home_arg, cfg=cfg, base=base)
     skills_dir = os.path.expanduser(os.path.expandvars(skills_dir or os.path.join(home, "skills")))
     root = sessions_root(home)

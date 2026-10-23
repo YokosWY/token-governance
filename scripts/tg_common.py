@@ -66,7 +66,8 @@ def _config_fail(path, msg, strict):
     为什么不允许静默：读错 home 的后果是「没有数据」或偏小的数字，看起来像脚本坏了。
     """
     if strict:
-        sys.exit(f"{path}: {msg}\n（改好配置，或用 --dsh-home 直接指定；不想改配置就跑 tg_common.py 看解析链）")
+        sys.exit(f"{path}: {msg}\n（配置读不出来就先改好它；`--dsh-home` 不能绕过这一步，它只覆盖 home。"
+                 f"排查解析链：python scripts/tg_common.py）")
     print(f"[warn] {path}: {msg}；已退回 $DSH_HOME / ~/.dsh", file=sys.stderr)
     return {}
 

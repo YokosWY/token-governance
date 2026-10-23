@@ -11,7 +11,7 @@
 """
 import argparse, json, os, statistics, subprocess, sys, time
 
-from tg_common import config_base, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import config_base, load_config, resolve_dsh_home, sessions_root, utf8_stdio
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
@@ -111,19 +111,13 @@ def main():
     a = ap.parse_args()
 
     prices, rate, src = {"input": 0.15, "cached": 0.003, "output": 0.6}, 7.1, "默认 flash 价（估算）"
-    cfg = {}
-    if os.path.isfile(a.config):
-        try:
-            import yaml
-            cfg = yaml.safe_load(open(a.config, encoding="utf-8")) or {}
-        except Exception as e:
-            sys.exit(f"{a.config} 读不了：{str(e).splitlines()[0]}")
-        p = cfg.get("prices_usd_per_mtok") or {}
-        if p:
-            prices.update({k: float(v) for k, v in p.items() if v is not None})
-            src = f"config: {a.config}"
-        if cfg.get("rate") is not None:
-            rate = float(cfg["rate"])
+    cfg, _base = load_config(a.config)
+    p = cfg.get("prices_usd_per_mtok") or {}
+    if p:
+        prices.update({k: float(v) for k, v in p.items() if v is not None})
+        src = f"config: {a.config}"
+    if cfg.get("rate") is not None:
+        rate = float(cfg["rate"])
     cin, cread, cout = (prices["input"] * rate / 1e6, prices["cached"] * rate / 1e6,
                         prices["output"] * rate / 1e6)
     root = sessions_root(resolve_dsh_home(a.dsh_home, cfg=cfg, base=config_base(a.config)))
