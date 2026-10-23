@@ -32,7 +32,7 @@ def set_prices(prices, rate, source="默认 flash 价（估算）"):
 def find_session(dsh_home, key):
     if os.path.isfile(key):
         return key
-    root = os.path.join(os.path.expanduser(dsh_home), "sessions")
+    root = sessions_root(dsh_home)
     for dp, _, fs in os.walk(root):
         if key in dp:
             for f in fs:

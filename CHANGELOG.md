@@ -14,8 +14,8 @@
 - `retry_patterns.py` 新增 `--config`（原先没有），`measure_modules.py` 的 `--dsh-home` 默认值由 `~/.dsh` 改空串，否则显式参数总是「已给」，优先级形同虚设
 - `cost_summary.py` 的 YAML 读取改为 strict：配置写坏要当场报错，不能静默退回默认 home 再给一份错账（它原本就报错，公共层的容错默认值会把这个信号吞掉）
 - `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak*`。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随按运行顺序漂移
-- 测试 32 → 39：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ 1 项静态检查（脚本里不许再出现 `$DSH_HOME` 直读）
-- 验收：测试 39/39、`audit_pack` 0 问题、`gen_metrics --check` 通过；用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两个版本，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 输出逐字节一致（`retry_patterns` 因新增 `--config` 除外）
+- 测试 32 → 40：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ 1 项静态检查（脚本里不许再出现 `$DSH_HOME` 直读）
+- 验收：测试 40/40、`audit_pack` 0 问题、`gen_metrics --check` 通过；用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两个版本，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 输出逐字节一致（`retry_patterns` 因新增 `--config` 除外）
 
 ## v0.11.4 — 2026-10-24（顽固循环率 + 协议规则落在常驻层）
 - `guard_stats.py`：新增「参数链」口径——按 `(工具, 参数哈希)` 归链，取链内最高提醒次数，输出停在 2 / 升到 4 / 升到 6 的分布与**顽固率**（到第 6 次仍在重复的链占比）。这是「提醒没改变行为」的唯一可观测代理；口径写明不能证明之后是否止损

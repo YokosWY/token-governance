@@ -307,6 +307,16 @@ def main():
             offenders.append(fn)
     check("没有脚本再手写 DSH_HOME 解析", not offenders, ", ".join(offenders))
 
+    # 拼 sessions 路径也只允许在 tg_common（JSON 里的 "sessions" 计数键不算：那一行没有 join）
+    builders = []
+    for fn in sorted(os.listdir(SCRIPTS)):
+        if not fn.endswith(".py") or fn == "tg_common.py":
+            continue
+        for no, line in enumerate(open(os.path.join(SCRIPTS, fn), encoding="utf-8"), 1):
+            if '"sessions"' in line and "join(" in line:
+                builders.append(f"{fn}:{no}")
+    check("没有脚本再自己拼 sessions 路径", not builders, ", ".join(builders))
+
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
