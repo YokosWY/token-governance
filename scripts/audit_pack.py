@@ -115,7 +115,8 @@ def main():
     gm = os.path.join(a.root, "scripts", "gen_metrics.py")
     if os.path.isfile(gm):
         r = subprocess.run([sys.executable, gm, "--check", "--root", a.root],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         if r.returncode != 0:
             issues.append(("TG", "中", "文档数字与 data/metrics.json 不一致（跑 gen_metrics.py --write）"))
 

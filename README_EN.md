@@ -1,0 +1,129 @@
+# Token-Governance (TG)
+
+English | [简体中文](README.md)
+
+A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
+usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
+
+10 skills, 18 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
+Runs on the configuration layer of DeepSeek Harness.
+
+## Highlights
+
+- **Lifetime billing** — cost = content length × remaining steps. Counting an injection once is off by ~200×, so every attribution multiplies by the steps the content survives.
+- **Same-session counterfactual** — configuration is global, so two parameter sets cannot run side by side. `measure_modules.py --cf-schema --cf-catalog` replays old parameters against the same session, removing task-difficulty bias.
+- **Static prefix first** — tool schemas and the skills catalog are paid every step. In one 200k-window sample: tools 230–265 → 174, schema 284–312 → 154 kB, catalog entry 42 → 9.6 kB.
+- **Catalog bypass pool** — discoverable is not callable. Only `tg-router` stays resident; the other nine skills are marked `disable-model-invocation` and loaded with `read` or `/name`, so installing more does not raise the per-step floor.
+- **Never rewrite history** — a cache key is an exact token prefix. Rewriting one message forces everything after it back to input price, about 50× the cache price. Post-hoc trimming is set to never fire; size is handled at write time by spilling tool output to disk.
+- **Compaction is a safety valve** — each compaction pushes the whole prefix back to uncached. A 729-step session compacted 4 times showed near-zero net gain. Threshold stays high (0.8) and only fires near the window limit.
+- **Three meters** — per step, per turn (one user instruction), per task. `turn_cost.py` reports median, mean and P90 so cheap steps do not hide the long tail.
+- **Runtime guard** — the loop guard counts strict equality of tool name plus argument hash and appends a reminder on the 2nd/4th/6th repeat; it never blocks a call, never pops a dialog, never ends a session. Argument preview is off by default so credentials stay out of context.
+- **Rollback** — `patch_snapshot.py` snapshots the patch, lists, diffs and restores; it backs up the current file and validates YAML before writing.
+- **Single source of numbers** — summary tables are generated from `data/metrics.json`, and `audit_pack.py` plus the test suite fail when a number is edited by hand. `retry_patterns` and `failure_analysis` only observe; they never intercept.
+
+## What you get
+
+```text
+$ python scripts/cost_summary.py --config config.yaml --days 7
+window: last 7 days | total CNY 105.33 | 8324 calls
+context 1.974 B | cache hit 99.05% | avg 237 k/call | CNY 0.0127/call
+
+$ python scripts/measure_modules.py --session <id> --dsh-home "$DSH_HOME"
+pricing: input $0.15/M cacheRead $0.003/M output $0.6/M x 7.1 (default flash price, estimate)
+steps=126 turns=19 total CNY 0.719 per turn 0.0378 context 15.9M output 67k
+
+$ python scripts/turn_cost.py --config config.yaml --days 3
+per-turn CNY  median 0.0548  mean 0.0932  P90 0.22
+```
+
+## Install
+
+Requirements: Python 3.9+, pyyaml; either the `zstd` binary or `pip install zstandard`
+to decompress session logs; Node 18+ only for the guard self-check.
+
+```bash
+cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) skills, effective after restart
+cp config.example.yaml config.yaml                 # 2) edit dsh_home, memory_root, skills_dir
+python scripts/preflight.py --config config.yaml   # 3) read-only: 0 pass / 1 review / 2 refuse
+```
+
+Use it normally for a day: the ledger is written by cost-meter. On a fresh install the
+audit exits 1 with "no readable ledger", which is expected.
+
+Guard only: `python scripts/install_guard.py --home "$DSH_HOME" --apply` (dry-run by default,
+backs up `package.json`); uninstall with `--uninstall`.
+
+Upgrading the host rewrites the composed config; re-run
+`gen_preset_override.py --window <context size>` and check `preflight` for preset and
+plugin-name drift.
+
+## Usage
+
+| Goal | Command | Read |
+|---|---|---|
+| Weekly spend | `cost_summary --days 7` | daily CNY, calls, cache hit rate |
+| Which module costs most | `measure_modules --session <id>` | catalog / tool schema / tool result share |
+| Cost of one task | `turn_cost --days 3` | median, mean, P90 per turn |
+| Why so many retries | `failure_analysis --protocol-only` | protocol-error share, top messages |
+| Cache headroom | `cache_audit --days 3` | hit rate, misses per step, miss cost share |
+| Did the change help | `baseline --write` then `--compare` | start context, schema, catalog |
+| Is the config still aligned | `preflight --config` | preset drift, plugin-name drift |
+
+## Layout
+
+```text
+token-governance/
+  README.md  README_EN.md  LICENSE  CHANGELOG.md  CONTRIBUTING.md
+  config.example.yaml          # three required edits, rest optional
+  data/metrics.json            # single source for document numbers
+  skills/                      # 10 skills (9 idle by default)
+  scripts/                     # 18 scripts: measure / attribute / configure / quality
+  plugins/dsh-loop-guard/      # loop guard source
+  tests/                       # 23 assertions + fixtures
+  docs/                        # 5 documents
+  clarify-needs/               # sibling project (requirements clarification, preview)
+```
+
+## Verification
+
+```bash
+python scripts/audit_pack.py          # structure, references, stale words, number consistency
+python tests/run_tests.py             # 23 assertions, standard library only
+python scripts/gen_metrics.py --check # tables must match data/metrics.json
+```
+
+All three are read-only and fail with a non-zero exit code.
+
+## Limits
+
+- Other clients are not guaranteed: Claude Code, Codex and Cursor have no preset layer; isolate
+  expensive tools through subagents instead (`docs/adaptation.md`).
+- Scripts are DSH-specific: session logs and the cost-meter ledger are DSH formats.
+- The patch is not shipped: tool trimming, pruner and compaction thresholds live in each
+  machine's `cordis.patch.yml`; copying skills alone will not lower your bill.
+- Preset overrides are snapshots: the composed config is rewritten on every start, so re-run
+  `gen_preset_override.py` after an upgrade.
+- No ledger, no conclusion: schema size and hit rate are process metrics only.
+- Compaction is not a lever: low thresholds only add prefix rebuilds.
+
+## Security and privacy
+
+Scripts read session logs and the ledger, and upload nothing. Paths appear as-is in reports,
+so review a report before publishing it. The guard defaults to `argumentsPreviewChars: 0`,
+which reports argument length only; add credential-bearing tools to `exclude`. The repository
+contains no credentials, `config.yaml` is gitignored and `_local/` holds machine-private notes.
+
+## Documents
+
+- `docs/benchmark.md` — measurement method, per-session numbers, cache-hit section
+- `docs/principles.md` — twelve principles and threshold derivations
+- `docs/operations.md` — loop guard and protocol discipline
+- `docs/concepts.md` — terms and the six mechanisms
+- `docs/adaptation.md` — other machines, other clients, no ledger
+
+## License
+
+MIT © 2026. See `LICENSE`.
+
+An independent tool; not affiliated with or endorsed by any model provider. Case numbers come
+from a single machine and are not a promise about your environment.
