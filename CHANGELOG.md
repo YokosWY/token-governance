@@ -18,8 +18,12 @@
 - `cost_summary` / `compare_days` / `preflight` 补 `--dsh-home`（README 一直写「用 --dsh-home 可以临时压过配置」，但这三个脚本原先没有这个开关）
 - `measure_modules.load_price_config` 与 `schema_budget.load_budget` 并进 `tg_common`，不再一个报「配置解析失败」、一个静默用默认
 - `audit_pack.py`：跳过 `__pycache__` / `*.pyc` / `*.bak`（按后缀与 `.bak-` / `.bak_` 判定，不误伤 `bakery.py`）。修前跑一次 `py_compile` 或测试，包内文件数就从 75 变 93，自检结果随运行顺序漂移
-- 测试 32 → 48：6 项锁 `dsh_home` 优先级（显式 > config > 环境 > 默认、相对路径、多 home 去重）+ **4 项端到端**（只给 config 不传 flag 时读 config、无 config 时退回 `$DSH_HOME`、`compare_days` 有开关可用、坏 config 下四个脚本必须报错）+ **2 项 AST 静态检查**（不许直读 `DSH_HOME`：`getenv` / 别名 / 下标 / 字符串拼接都覆盖，注释不误报；不许自己拼 `sessions` 路径）
-- 验收：测试 48/48、`audit_pack` 0 问题、`gen_metrics --check` 通过、`verify_guard` 15/15；**显式传 flag 的路径**用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两版，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 逐字节一致（`retry_patterns` 因新增 `--config` 除外）。**默认路径是有意变更的**（见上面 49→99、36→52），不适用「逐字节一致」这条
+- 私有 YAML 读法全部收编：`new_session` / `patch_snapshot` / `turn_cost` / `skill_usage` / `failure_analysis` 原本各自 `yaml.safe_load(...) or {}`，坏配置时行为不一致——`new_session` 会静默把对话夹建到 `~/tg-memory`（config 注释里写明的废弃目录），`patch_snapshot` 会去拍 `~/.dsh` 的补丁。现在统一走 `tg_common.load_config`，坏 YAML / GBK 存盘 / 顶层写成列表三种情况都报错退出
+- `preflight.py` 的配置校验补 `UnicodeDecodeError` 与「顶层不是映射」两类：GBK 存盘的 config 不再抛 traceback，给的是「另存为 UTF-8」的可读提示
+- 错误提示改掉一句不成立的引导：原先写「或用 `--dsh-home` 直接指定」，但严格模式下 `--dsh-home` 不能绕过配置读取（实测 `baseline --dsh-home X --config 坏配置` 仍退出），现在明确写「先改好配置」
+- `docs/operations.md` 的坏配置示例改成 `C:\dsh-next`：原示例用了本机绝对路径，触发 `audit_pack` 的绝对路径规则（2 条「中」），CI 只对「高」失败，等于放行了
+- 测试 32 → 98：6 项锁 `dsh_home` 优先级 + 4 项端到端（只给 config / 退回 `$DSH_HOME` / `--dsh-home` 能压 / 坏配置必须非零退出）+ **14 个带 `--config` 的脚本 × 3 类故障注入**（坏 YAML / 顶层非映射 / GBK 编码，且与 `scripts/` 实际 argparse 对账，漏一个脚本就红）+ 坏配置下 `new_session` 不许建目录 + **10 项静态检查变异用例**（`getenv` / `setdefault` / 字符串拼接 / 别名 / 下标 / 注释不误报；`join` / f-string / `Path` 除法 / JSON 键不误报）
+- 验收：测试 98/98、`audit_pack` 0 问题（高 0 / 中 0）、`gen_metrics --check` 通过、`verify_guard` 15/15；**显式传 flag 的路径**用固定 home（14 个历史会话 + 真实 ledger）跑旧/新两版，`cost_summary` / `failure_analysis` / `turn_cost` / `skill_usage` / `schema_budget` / `cache_audit` / `preflight` / `baseline` 逐字节一致（`retry_patterns` 因新增 `--config` 除外）。**默认路径是有意变更的**（见上面 49→99、36→52），不适用「逐字节一致」这条
 
 ## v0.11.4 — 2026-10-24（顽固循环率 + 协议规则落在常驻层）
 - `guard_stats.py`：新增「参数链」口径——按 `(工具, 参数哈希)` 归链，取链内最高提醒次数，输出停在 2 / 升到 4 / 升到 6 的分布与**顽固率**（到第 6 次仍在重复的链占比）。这是「提醒没改变行为」的唯一可观测代理；口径写明不能证明之后是否止损

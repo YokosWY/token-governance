@@ -166,7 +166,8 @@ server 级 deny 之后，需要时按会话激活，不必改回持久配置；`
   分支把 `$DSH_HOME` 排在显式参数前面，同一个脚本的两条路径会读不同 home。
 - **配置读不出来一律报错**（文件不存在除外）。配置文件在、但 YAML 写坏或没装 pyyaml 时，
   `load_config` 直接退出并给排查提示；不再「静默退回 `~/.dsh` 交一份看起来正常的报表」。
-  最常见的坏法是双引号里写 Windows 反斜杠：`dsh_home: "D:\AI\DSH-NEXT"`，改用正斜杠或单引号。
+  最常见的坏法是双引号里写 Windows 反斜杠：`dsh_home: "C:\dsh-next"`（`\d` 被当转义），
+  改用正斜杠 `C:/dsh-next` 或单引号 `'C:\dsh-next'`；另外 GBK 存盘、顶层写成列表也会被拒。
 - 机器上装两套客户端时最容易撞：「官方版写 `~/.dsh`、发行版写自己的 home」。顺序定死之后，
   读哪一份是可预测的；要临时换，用 `--dsh-home`（`cost_summary` / `compare_days` / `preflight`
   在 v0.12.0 补上了这个开关）。

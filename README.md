@@ -154,7 +154,7 @@ token-governance/
   skills/                      # 10 个技能（9 个待机）
   scripts/                     # 22 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 48 项断言 + fixtures
+  tests/                       # 98 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
 ```
@@ -168,12 +168,12 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 48 项断言，纯标准库，不需要 pytest
+python tests/run_tests.py             # 98 项断言，纯标准库，不需要 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压 / 坏配置报错）、两项 AST 静态检查、文档数字一致、包自检。
+三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、10 项静态检查变异用例、文档数字一致、包自检。
 
 `.github/workflows/ci.yml` 在 Windows 上跑同一套命令作为合并门禁；Linux 只做探测（不阻塞），因为验收环境是 Windows。
 
@@ -280,7 +280,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
-| v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 48 项 |
+| v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |
 | v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |
 | v0.11.1 | 需求澄清迁出为独立仓库 |

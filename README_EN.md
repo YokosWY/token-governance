@@ -84,7 +84,7 @@ token-governance/
   skills/                      # 10 skills (9 idle by default)
   scripts/                     # 22 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 48 assertions + fixtures
+  tests/                       # 98 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate; Linux is a non-blocking probe
 ```
@@ -96,7 +96,7 @@ token-governance/
 
 ```bash
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 48 assertions, standard library only
+python tests/run_tests.py             # 98 assertions, standard library only
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
