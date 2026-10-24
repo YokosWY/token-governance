@@ -72,3 +72,20 @@ jobs:
         run: python tests/run_tests.py
       - name: 包自检
         run: python scripts/audit_pack.py
+
+  # 首次上手：模拟「刚 clone 下来、还没用过 DSH 的新机器」把安装段那几条命令跑一遍。
+  # 这一条抓的是「本地有数据才绿」的整类问题（doctor 的 CI 红灯就是这么来的）。
+  first-run:
+    name: first-run (windows · 干净机器)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install zstandard pyyaml
+      - name: 首次上手脚本（空 home + 空技能目录）
+        run: python tests/first_run.py

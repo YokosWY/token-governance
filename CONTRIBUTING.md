@@ -51,10 +51,11 @@ fix: 修正 README 语句错误
 
 ## CI
 
-`.github/workflows/ci.yml` 有三个 job：
+`.github/workflows/ci.yml` 有四个 job：
 
 - `test (windows · 验收)`：合并门禁，跑测试与 `audit_pack`，红了不能合。
 - `matrix (ubuntu/macos · py3.10/3.12)`：兼容性门禁（2026-10-24 首轮全绿后转正）。
+- `first-run (windows)`：首次上手门禁，跑 `tests/first_run.py`（空 home 下 10 步）。
 - `probe (linux · 不阻塞)`：只提前暴露路径与编码类问题，不阻塞合并。
 
 本机没有 GitHub 直连时（常见于内网/代理环境），用上面三步本地自查代替，不要为了过 CI 改断言。

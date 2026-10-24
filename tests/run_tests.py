@@ -474,7 +474,8 @@ def main():
     config_scripts = ("baseline.py", "cache_audit.py", "compare_days.py", "cost_summary.py",
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
-                      "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py")
+                      "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
+                      "install_guard.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
@@ -485,7 +486,8 @@ def main():
           declared <= (set(config_scripts) | tolerant_scripts),
           f"漏: {sorted(declared - set(config_scripts) - tolerant_scripts)}")
 
-    extra = {"new_session.py": ("__probe__", "sid1")}
+    extra = {"new_session.py": ("__probe__", "sid1"),
+             "install_guard.py": ("--status",)}
     for script in config_scripts:
         args = list(extra.get(script, ())) + ["--config", bad_cfg]
         r = run(script, *args)
@@ -755,6 +757,12 @@ def main():
     except SyntaxError as e:
         syntax_bad.append(f"tests:{e.lineno}")
     check("全部脚本在 Python 3.9 语法下可解析", not syntax_bad, ", ".join(syntax_bad))
+
+    # 18. 首次上手（空 home / 空技能目录）：跑独立脚本，保证它没被改坏
+    r = subprocess.run([PY, os.path.join(ROOT, "tests", "first_run.py")],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=ROOT)
+    check("首次上手 10 步无 traceback", r.returncode == 0, (r.stdout or "")[-160:])
 
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）

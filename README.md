@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v0.13.0-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v0.13.1-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-23-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-122-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-126-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -170,7 +170,7 @@ token-governance/
   skills/                      # 10 个技能（9 个待机）
   scripts/                     # 23 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 122 项断言 + fixtures
+  tests/                       # 126 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
@@ -184,15 +184,16 @@ token-governance/
 
 ```bash
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
+python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 122 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 126 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
 都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
-`.github/workflows/ci.yml` 有两个门禁：Windows 验收 job（跑同一套命令）与 Ubuntu/macOS × Python 3.10/3.12 的兼容矩阵（2026-10-24 首轮全绿后转正）；另有 Linux 全量测试探测，不阻塞。
+`.github/workflows/ci.yml` 有三个门禁：Windows 验收 job、Ubuntu/macOS × Python 3.10/3.12 兼容矩阵（2026-10-24 首轮全绿后转正）、首次上手 job（空 home 跑 10 步）；另有 Linux 全量测试探测，不阻塞。
 
 `doctor --apply` 只执行两件可回滚的事：拍补丁快照、记首日基线。它不改 `cordis.patch.yml`、不删技能、不动 preset——这些要人裁决。
 
@@ -297,7 +298,8 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
-| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 122 项 |
+| v0.13.1 | 首次上手成门禁（`tests/first_run.py` + CI job）；`install_guard --config`；测试 126 项 |
+| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 126 项 |
 | v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |
 | v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |

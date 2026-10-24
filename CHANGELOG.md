@@ -3,6 +3,15 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.13.1 — 2026-10-24（首次上手成一条可跑的门禁）
+- 新增 `tests/first_run.py`：模拟「刚 clone、机器上没有 DSH 数据」的前十分钟，按安装段的顺序跑
+  `env_check → preflight → doctor → cost_summary → baseline → patch_snapshot → install_guard → new_session → check_yaml → audit_pack`，
+  断言只有两条：**不出现 `Traceback`**、退出码落在文档写明的范围。10 步全过才算通
+- CI 新增 `first-run (windows)` job 跑同一脚本；这是「本地有数据才绿」那类问题的整类防线（`doctor` 的 CI 红灯就是这么来的）
+- `install_guard.py` 补 `--config`：换机器的人可以用自己那份配置决定装到哪个 home，不再写死读仓库的 `config.yaml`
+- 测试 122 → 126（`first_run.py` 一条 + `install_guard` 坏配置三条）
+- 实测：首次上手脚本本机 10/10 通过；`preflight` 空机器 rc=1、`cost_summary`/`baseline` rc=1、`doctor` 给 `first-run` 动作，都要说人话
+
 ## v0.13.0 — 2026-10-24（换机器能跑：依赖分级 + 环境自检 + 跨平台矩阵）
 - 新增 `scripts/env_check.py`：一条命令核对 Python 版本 / pyyaml / 解压器（`zstd` 或 `zstandard`）/ Node / `dsh_home` 可读与可写。分必需 / 可选 / 信息三档，缺必需项退出码 1，`--json` 给安装脚本或 CI 读。检测用「真的 import 一次」而不是 `find_spec`——后者只看得到文件，模块自己抛 `ImportError` 时会误判为可用（自测时抓到的假阳性）
 - 修 `scripts/check_yaml.py`：缺 pyyaml 时抛 `Traceback`（模块顶层 `import yaml`）；改为延迟导入 + 退出码 2。同时补文件不存在 / 非 UTF-8 / YAML 错 / 顶层非数组四类可读报错

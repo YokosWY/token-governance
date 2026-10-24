@@ -34,9 +34,13 @@ PLUGIN_NAME = "@local/dsh-loop-guard"
 DIR_NAME = "dsh-loop-guard"
 
 
-def pick_home(explicit: str | None) -> Path:
-    """口径同 tg_common.resolve_dsh_home：显式 > config 的 dsh_home > $DSH_HOME > ~/.dsh。"""
-    cfg, base = load_config(str(REPO / "config.yaml"))
+def pick_home(explicit: str | None, config_path: str | None = None) -> Path:
+    """口径同 tg_common.resolve_dsh_home：显式 > config 的 dsh_home > $DSH_HOME > ~/.dsh。
+
+    --config 默认用仓库自带的 config.yaml；换机器的人可以用它指向自己那份。
+    """
+    cfg_path = config_path or str(REPO / "config.yaml")
+    cfg, base = load_config(cfg_path)
     return Path(resolve_dsh_home(explicit or "", cfg=cfg, base=base))
 
 
@@ -150,13 +154,14 @@ def uninstall(home: Path, profile: str, apply: bool) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--home")
+    ap.add_argument("--config", default="", help="配置文件；默认用仓库自带的 config.yaml")
     ap.add_argument("--profile", default="desktop")
     ap.add_argument("--apply", action="store_true", help="真正写入（默认 dry-run）")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--uninstall", action="store_true")
     args = ap.parse_args()
 
-    home = pick_home(args.home)
+    home = pick_home(args.home, args.config or None)
     if args.status:
         return status(home, args.profile)
     if args.uninstall:

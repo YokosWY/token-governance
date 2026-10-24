@@ -54,7 +54,8 @@ insist of a traceback:
 | optional | Node 18+ | `verify_guard.mjs` self-check | that one check is skipped |
 
 ```bash
-python scripts/env_check.py            # required / optional / info, with fix commands; exit 1 if a required item is missing
+python scripts/env_check.py           # required / optional / info, with fix commands; exit 1 if a required item is missing
+python tests/first_run.py             # first-run: 10 install-step commands against an empty home
 ```
 
 ```bash
@@ -97,7 +98,7 @@ token-governance/
   skills/                      # 10 skills (9 idle by default)
   scripts/                     # 23 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 122 assertions + fixtures
+  tests/                       # 126 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate + Ubuntu/macOS compatibility matrix (also a gate)
 ```
@@ -110,14 +111,14 @@ token-governance/
 ```bash
 python scripts/env_check.py           # Python / pyyaml / decompressor / node / dsh_home
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 122 assertions, standard library (zstandard is used when the zstd binary is absent)
+python tests/run_tests.py             # 126 assertions, standard library (zstandard is used when the zstd binary is absent)
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
 All are read-only and fail with a non-zero exit code. The Windows CI job runs the same
 commands as a merge gate, together with an Ubuntu/macOS × Python 3.10/3.12 compatibility
-matrix (promoted to a gate after its first green run on 2026-10-24). A full Linux test probe
-still runs non-blocking.
+matrix (promoted to a gate after its first green run on 2026-10-24) and a first-run job that
+replays the install steps against an empty home. A full Linux test probe runs non-blocking.
 
 ## Limits
 
