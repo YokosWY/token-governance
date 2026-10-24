@@ -12,7 +12,7 @@
 """
 import argparse, json, os, subprocess, sys
 
-from tg_common import config_base, load_yaml, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import config_base, load_yaml, resolve_dsh_home, sessions_root, utf8_stdio, decompress_bytes
 
 utf8_stdio()
 
@@ -42,32 +42,8 @@ def find_session(dsh_home, key):
 
 
 def decompress(path):
-    """先试 zstd 命令，没有再用 Python zstandard；两者都没有才退出。"""
-    try:
-        r = subprocess.run(["zstd", "-dc", path], capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            return r.stdout
-    except FileNotFoundError:
-        pass
-    try:
-        import zstandard as zstd
-    except ImportError:
-        sys.exit("解压需要二选一：`zstd` 命令（Windows 用 Git for Windows 自带的，macOS `brew install zstd`）"
-                 "或 `pip install zstandard`。")
-    with open(path, "rb") as f:
-        data = f.read()
-    dctx = zstd.ZstdDecompressor()
-    out = []
-    while data:
-        dobj = dctx.decompressobj()
-        try:
-            out.append(dobj.decompress(data))
-        except Exception:
-            sys.exit(f"zstd 解压失败（文件损坏或不是 zstd 流）: {path}")
-        if not dobj.eof:
-            break
-        data = dobj.unused_data
-    return b"".join(out)
+    """解压 .zstd：口径统一在 tg_common（zstd 命令 → zstandard 模块 → 一句可执行提示）。"""
+    return decompress_bytes(path)
 
 
 def load_events(path):

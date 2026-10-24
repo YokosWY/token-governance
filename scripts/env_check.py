@@ -34,8 +34,8 @@ MIN_PY = (3, 9)
 FIX = {
     "python": "装 Python 3.9+（本项目在 3.9/3.14 上验过；低于 3.9 不保证）",
     "pyyaml": "pip install pyyaml",
-    "zstd": "装 zstd 命令（Windows: Git for Windows 自带；macOS: brew install zstd；"
-            "Debian/Ubuntu: apt install zstd）或 pip install zstandard",
+    "zstd": "pip install zstandard（首选，跨平台）；或装系统包：macOS brew install zstd、"
+            "Debian/Ubuntu apt install zstd。Windows 不保证自带 zstd.exe",
     "node": "装 Node 18+（只影响 verify_guard.mjs 的守卫自检，不影响看账）",
 }
 
@@ -53,59 +53,97 @@ def check_python():
     }
 
 
-def _importable(name):
-    """真 import 一次：find_spec 只看得到文件，模块自己抛 ImportError 时会被误判为可用。"""
+def _probe_module(name, *attrs):
+    """真 import 一次并检查关键 API：find_spec 只看得到文件，同名假模块会被误判为可用。"""
     try:
-        __import__(name)
-        return True
+        mod = __import__(name, fromlist=["*"])
     except Exception:
-        return False
+        return False, ""
+    for a in attrs:
+        if not hasattr(mod, a):
+            return False, f"{name} 能导入但缺少 {a}（同名假模块？）"
+    return True, ""
 
 
 def check_pyyaml():
-    ok = _importable("yaml")
+    ok, why = _probe_module("yaml", "safe_load")
     return {
         "key": "pyyaml", "level": "required", "ok": ok,
-        "detail": "pyyaml 可用" if ok else "pyyaml 缺失：所有读 config.yaml 的脚本会直接拒绝运行",
+        "detail": "pyyaml 可用" if ok else (why or "pyyaml 缺失：所有读 config.yaml 的脚本会直接拒绝运行"),
         "fix": "" if ok else FIX["pyyaml"],
     }
 
 
+def check_config(path):
+    """config 本身也是必需项：文件在但读不出来时，后面所有检查都会落到错误的 home 上。"""
+    if not path or not os.path.isfile(path):
+        return {"key": "config", "level": "required", "ok": True,
+                "detail": "没有 config.yaml（按默认值检查）", "fix": ""}
+    try:
+        import yaml
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except ImportError:
+        return {"key": "config", "level": "required", "ok": False,
+                "detail": f"{path} 读不了：没装 pyyaml", "fix": FIX["pyyaml"]}
+    except UnicodeDecodeError as e:
+        return {"key": "config", "level": "required", "ok": False,
+                "detail": f"{path} 不是 UTF-8（{e}）", "fix": "另存为 UTF-8 再跑"}
+    except Exception as e:
+        return {"key": "config", "level": "required", "ok": False,
+                "detail": f"{path} 不是合法 YAML：{str(e).splitlines()[0]}",
+                "fix": "改好配置（常见：双引号里写 Windows 反斜杠 / GBK 存盘 / 顶层不是映射）"}
+    if not isinstance(data, dict):
+        return {"key": "config", "level": "required", "ok": False,
+                "detail": f"{path} 顶层不是映射（读到 {type(data).__name__}）",
+                "fix": "配置应是 key: value 形式"}
+    return {"key": "config", "level": "required", "ok": True,
+            "detail": f"{path} 可读", "fix": ""}
+
+
 def check_unzip():
     exe = shutil.which("zstd")
-    mod = _importable("zstandard")
+    mod, why = _probe_module("zstandard", "ZstdDecompressor")
     ok = bool(exe) or mod
     got = []
     if exe:
         got.append(f"zstd 命令 {exe}")
     if mod:
         got.append("Python zstandard 模块")
+    if not ok and why:
+        got.append(why)
     return {
         "key": "unzip", "level": "required", "ok": ok,
-        "detail": "、".join(got) if ok else "解压器缺失：会话日志（.jsonl.zstd）读不了",
+        "detail": "、".join(got) if got else "解压器缺失：会话日志（.jsonl.zstd）读不了",
         "fix": "" if ok else FIX["zstd"],
     }
 
 
 def check_node():
     exe = shutil.which("node")
-    ver = ""
+    ver, major = "", 0
     if exe:
         try:
             r = subprocess.run([exe, "--version"], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=10)
             ver = (r.stdout or "").strip()
+            major = int(ver.lstrip("v").split(".")[0]) if ver.lstrip("v")[:1].isdigit() else 0
         except Exception:
             ver = ""
-    ok = bool(exe)
+    ok = bool(exe) and major >= 18
+    if not exe:
+        detail = "node 缺失：只影响守卫自检，不影响看账"
+    elif major and major < 18:
+        detail = f"node {ver} 低于 18：守卫自检（verify_guard.mjs）可能跑不了"
+    else:
+        detail = f"node {ver}".strip()
     return {
         "key": "node", "level": "optional", "ok": ok,
-        "detail": f"node {ver}".strip() if ok else "node 缺失：只影响守卫自检，不影响看账",
-        "fix": "" if ok else FIX["node"],
+        "detail": detail, "fix": "" if ok else FIX["node"],
     }
 
 
-def check_dsh_home(cfg, base, home_arg):
+def check_dsh_home(cfg, base, home_arg, note=""):
     home = resolve_dsh_home(home_arg, cfg=cfg, base=base)
     root = sessions_root(home)
     has_sessions = os.path.isdir(root)
@@ -124,8 +162,8 @@ def check_dsh_home(cfg, base, home_arg):
             writable = False
     return {
         "key": "dsh_home", "level": "info", "ok": has_sessions or has_ledger,
-        "detail": f"{home}；sessions={'有' if has_sessions else '无'} "
-                  f"ledger={'有' if has_ledger else '无'} 可写={'是' if writable else '否'}",
+        "detail": (note + f"{home}；sessions={'有' if has_sessions else '无'} "
+                   f"ledger={'有' if has_ledger else '无'} 可写={'是' if writable else '否'}"),
         "fix": "" if (has_sessions or has_ledger)
         else "home 里既没有 sessions 也没有 ledger：确认 --dsh-home 或 config.yaml 的 dsh_home 指对了",
     }
@@ -136,9 +174,14 @@ def main():
     add_common_args(ap, json_flag=True)
     a = ap.parse_args()
 
+    cfg_row = check_config(a.config)
     cfg, base = load_config(a.config, strict=False)  # 自检本身不能因为配置坏而没法报告
-    rows = [check_python(), check_pyyaml(), check_unzip(), check_node(),
-            check_dsh_home(cfg, base, a.dsh_home)]
+    if not cfg_row["ok"]:
+        # 配置坏了，后面的 home 解析会退回默认值：把这件事写在行里，别让「齐备」误导人
+        cfg = {}
+    rows = [check_python(), check_pyyaml(), check_unzip(), check_node(), cfg_row,
+            check_dsh_home(cfg, base, a.dsh_home,
+                           note="" if cfg_row["ok"] else "（config 解析失败，以下按默认 home 检查）")]
 
     missing_req = [r for r in rows if r["level"] == "required" and not r["ok"]]
     out = {
@@ -146,6 +189,7 @@ def main():
         "python": _ver(sys.version_info[:3]),
         "platform": sys.platform,
         "config": os.path.abspath(a.config) if os.path.isfile(a.config) else "",
+        "config_error": "" if cfg_row["ok"] else cfg_row["detail"],
         "checks": [{k: r[k] for k in ("key", "level", "ok", "detail", "fix")} for r in rows],
         "missing_required": [r["key"] for r in missing_req],
     }

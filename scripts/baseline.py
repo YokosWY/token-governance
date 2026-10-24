@@ -11,34 +11,15 @@
 """
 import argparse, json, os, statistics, subprocess, sys, time, datetime
 
-from tg_common import config_base, load_config, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import config_base, load_config, resolve_dsh_home, sessions_root, utf8_stdio, decompress_bytes
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
 
 
 def decompress(path):
-    try:
-        r = subprocess.run(["zstd", "-dc", path], capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            return r.stdout
-    except FileNotFoundError:
-        pass
-    try:
-        import zstandard as zstd
-    except ImportError:
-        sys.exit("解压需要二选一：`zstd` 命令或 `pip install zstandard`。")
-    with open(path, "rb") as f:
-        data = f.read()
-    dctx = zstd.ZstdDecompressor()
-    out = []
-    while data:
-        dobj = dctx.decompressobj()
-        out.append(dobj.decompress(data))
-        if not dobj.eof:
-            break
-        data = dobj.unused_data
-    return b"".join(out)
+    """解压 .zstd：口径统一在 tg_common（zstd 命令 → zstandard 模块 → 一句可执行提示）。"""
+    return decompress_bytes(path)
 
 
 def text_of(o):

@@ -16,7 +16,16 @@
   - `doctor` 新增 `--dsh-home` / `--config` 并透传给 5 个子脚本：整个体检看哪份数据，一处指定、处处一致
   - 测试改用空 home 断言 `first-run`，不再依赖本机数据
 - 无 HOME / USERPROFILE 时，解析链会提示「无法展开 ~」，而不是把字面 `~` 原样塞进错误信息
-- 测试 98 → 109：18 个脚本 × 缺 pyyaml / 缺 zstandard 两种注入（断言无 `Traceback`）、`env_check` 在齐备/缺项环境的退出码与点名、BOM + 空格 + 中文路径可跑、无 HOME 可读报错、目标不可写时可读报错且不留目录、坏配置下 `env_check`/`doctor` 仍能自检
+- 第二轮独立评审（同一评审员，基准 `ad926e2`）判「仍需修」，5 条全部落实：
+  - **`env_check` 曾把坏配置报成「环境齐备」**：`--config` 坏掉时只打一行 stderr 警告，然后拿回退的 `~/.dsh` 当体检结果，stdout / `--json` / 退出码全绿。现在 config 单列必需项（解析失败 → rc=1，JSON 加 `config_error`），`dsh_home` 行注明「按默认 home 检查」
+  - **模块检测只判 import**：同名假模块（能 import、没有 API）会被判可用。改为 `_probe_module(名字, *必需属性)`（`yaml.safe_load` / `zstandard.ZstdDecompressor`）；解压逻辑同时收进 `tg_common.decompress_bytes`，遇到无 API 的 zstandard 给一句话而不是 `AttributeError`
+  - **`audit_pack` 把普通用户名当泄露**：`USER=user/test/dev` 在 Linux/macOS 上会触发几十条「高」。改为只认路径形状（`/home/<id>/`、`/Users/<id>/`、`Users\<id>\`），并加 `--local-id`；`SKIP_DIRS` 改按目录名比较（原先把 `.github` 当 `.git` 整棵跳过，`ci.yml` 从没被扫过）
+  - **README 徽章与计数无人 gate**：徽章停在 v0.11.2 / 21 / 32，正文已是 v0.13.0 / 23 / 118。新增 `data/counts.json` 作单一真相，测试套件自校验「断言条数 = counts.tests」，`audit_pack` 校验徽章与 `CHANGELOG` 最新版本
+  - **「纯标准库 / 换机器不用装依赖」的旧话**：`docs/benchmark.md`、`cache_audit.py` 文档头、`tg_common` 注释一并改成「核心计算纯标准库；读 config 要 pyyaml；读 .zstd 要 zstandard 或 zstd」
+- 补充修正：`CONTRIBUTING` 的 job 数（3 个）、README/README_EN 的「Linux 只做探测」改成「Ubuntu/macOS 矩阵 + Linux 探测，均非阻塞」、zstd 安装建议把 `pip install zstandard` 放首位（Windows 不保证自带 `zstd.exe`）、`install_guard` 的 `cscript` 验证提示标注仅 Windows
+- 解压器缺失的测试补第三组（PATH 剥空 + 模块注入）：此前只注入模块，本机 CLI 还在，`解压需要二选一` 那一支从未被执行
+- 无 HOME 时 `new_session --root ~` 拒绝在 cwd 建字面 `~` 目录；测试套件在压缩工具完全缺失时返回 0（SKIP）而不是 2（此前与 CI 的「跳过不算失败」相反）
+- 测试 98 → 118：18 个脚本 × 缺 pyyaml / 缺 zstandard / 两者都缺 三种注入（断言无 `Traceback`）、`env_check` 三条判定（齐备 / 缺 pyyaml / 缺解压器 / 坏配置）与退出码自洽、BOM + 空格 + 中文路径、无 HOME 可读报错且不建 `~` 目录、目标不可写可读报错且不留目录、普通用户名不误报、路径形状泄露能抓到、计数单一真相自校验
 
 ## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
 - 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_yaml()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这些事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次

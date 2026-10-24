@@ -5,7 +5,7 @@
   python audit_pack.py                    # 只查本包（脚本所在项目）
   python audit_pack.py --also <另一项目>
 """
-import argparse, os, re, subprocess, sys
+import argparse, json, os, re, subprocess, sys
 
 from tg_common import utf8_stdio
 
@@ -23,6 +23,7 @@ def read(p):
 
 
 SKIP_DIRS = ("_history", "_archive", "node_modules", ".git", "__pycache__")
+LOCAL_IDS = []  # 由 main() 按 --local-id / 环境变量填充
 
 
 def _is_backup(name):
@@ -33,9 +34,8 @@ def _is_backup(name):
 def walk(root):
     out = []
     for dp, dirs, fs in os.walk(root):
+        # 按目录名比较：用子串判断会把 .github 当成 .git 整棵跳过（ci.yml 从没被扫过）
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        if any(x in dp for x in SKIP_DIRS):
-            continue
         for f in fs:
             if f.endswith((".pyc", ".pyo")) or _is_backup(f):
                 continue
@@ -94,19 +94,15 @@ def check(label, root, issues):
                 here = os.path.dirname(f)
                 if not (os.path.exists(os.path.join(here, ref)) or os.path.exists(os.path.join(root, ref))):
                     issues.append((label, "中", f"{rel} 引用不存在的 {ref}"))
-        # 本机标识泄露检查：CI 上跳过——runner 的用户名/主机名不是秘密，
-        # 而 docs 里出现「runner」这类通用词会直接误报成高危（2026-10-24 踩过）。
-        in_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
-        generic = {"runner", "root", "admin", "user", "build", "ubuntu", "macos"}
-        local_ids = [] if in_ci else [
-            v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
-                        os.environ.get("COMPUTERNAME"))
-            if v and len(v) > 2 and v.lower() not in generic]
-        if local_ids:
-            # URL 里的 GitHub 账号是公开仓库地址，不算本机标识泄露；其余位置照查。
-            body_no_url = re.sub(r"https?://[^\s)\"'>]+", "", s)
-            if any(v in body_no_url for v in local_ids):
-                issues.append((label, "高", f"含本机用户名/主机名: {rel}"))
+        # 本机标识泄露检查：只认「路径形状」出现（/home/<id>/、/Users/<id>/、Users\<id>\），
+        # 不做裸子串——USER=user/test/dev 这类常见词会让 Linux/macOS 上一片「高」误报。
+        # --local-id 可显式指定要查的标识（默认取 USERNAME/USER/COMPUTERNAME）。
+        for lid in LOCAL_IDS:
+            pat = re.compile(
+                r"(?:/home/|/Users/|[A-Za-z]:[\\/]+Users[\\/]+)" + re.escape(lid) + r"(?=[/\\\s\"'`)]|$)",
+                re.IGNORECASE)
+            if pat.search(s):
+                issues.append((label, "高", f"路径里含本机用户名/主机名: {rel}"))
         if (label == "TG" and base != "CHANGELOG.md"
                 and re.search(r"D:\\?AI", s) and "portable-vs-local" not in f):
             issues.append((label, "中", f"TG 出现绝对路径: {rel}"))
@@ -127,7 +123,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     ap.add_argument("--also", action="append", default=[], help="顺带检查另一个项目目录")
+    ap.add_argument("--local-id", action="append", default=[],
+                    help="额外要查的本机标识（默认 USERNAME/USER/COMPUTERNAME）")
     a = ap.parse_args()
+
+    global LOCAL_IDS
+    LOCAL_IDS = list(a.local_id) or [
+        v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
+                    os.environ.get("COMPUTERNAME"))
+        if v and len(v) > 2]
 
     issues = []
     n = check("TG", a.root, issues)
@@ -135,6 +139,37 @@ def main():
     for extra in a.also:
         n2 = check(os.path.basename(extra.rstrip("\\/")).upper(), extra, issues)
         print(f"{os.path.basename(extra)}: {extra}  （{n2} 个文件）")
+
+    # README 徽章 vs data/counts.json vs CHANGELOG 最新版本：徽章最容易漂，必须 gate
+    counts_p = os.path.join(a.root, "data", "counts.json")
+    rd = read(os.path.join(a.root, "README.md"))
+    if os.path.isfile(counts_p):
+        try:
+            counts = json.load(open(counts_p, encoding="utf-8"))
+        except Exception as e:
+            counts = {}
+            issues.append(("TG", "中", f"data/counts.json 读不了：{e}"))
+        chg = read(os.path.join(a.root, "CHANGELOG.md"))
+        m = re.search(r"^## v([0-9][0-9.]+)", chg, re.M)
+        latest = m.group(1) if m else ""
+        badges = {
+            "version": re.search(r"badge/version-v([0-9][0-9.]+)", rd),
+            "scripts": re.search(r"badge/scripts-(\d+)", rd),
+            "tests": re.search(r"badge/tests-(\d+)", rd),
+            "skills": re.search(r"badge/skills-(\d+)", rd),
+        }
+        for key, got in badges.items():
+            if not got:
+                issues.append(("TG", "中", f"README 缺 {key} 徽章"))
+                continue
+            want = latest if key == "version" else str(counts.get(key, ""))
+            if want and got.group(1) != want:
+                issues.append(("TG", "中", f"README 徽章 {key}={got.group(1)} 与真值 {want} 不一致"))
+        real_scripts = (len([f for f in os.listdir(os.path.join(a.root, "scripts"))
+                             if f.endswith((".py", ".mjs"))]))
+        if counts.get("scripts") and int(counts["scripts"]) != real_scripts:
+            issues.append(("TG", "中",
+                           f"data/counts.json scripts={counts['scripts']}，实际 {real_scripts} 个"))
 
     # 数字单一真相：文档表格必须与 data/metrics.json 一致
     gm = os.path.join(a.root, "scripts", "gen_metrics.py")

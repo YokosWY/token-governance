@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cache_audit：缓存命中体检。只读、零写入、纯标准库，换机器不用装依赖。
+"""cache_audit：缓存命中体检。只读、零写入；读 config 要 pyyaml。
 
 三种数据源，自动降级：
   1) DSH 账本   --config config.yaml（读 dsh_home / dsh_homes）

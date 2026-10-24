@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v0.11.2-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v0.13.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-21-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-32-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-23-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-118-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -23,7 +23,7 @@
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
 > 10 个技能、23 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
-> 依赖只有两项是必需的：Python 3.9+ 与 pyyaml；解压会话日志再要 `zstd` 命令或 `zstandard` 二选一，Node 仅用于守卫自检。
+> 必需依赖三项：Python 3.9+、pyyaml、解压器（`pip install zstandard` 或 `zstd` 命令，二选一）；Node 18+ 仅用于守卫自检。
 > 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
 
@@ -86,7 +86,7 @@ TG 体检 · 2026-10-23 16:23（回看 7 天）
 |---|---|---|---|---|
 | 必需 | Python ≥ 3.9 | 所有脚本 | 跑不起来 | 装 3.9+（3.9 / 3.11 / 3.14 验过） |
 | 必需 | `pyyaml` | 读 `config.yaml` | 所有读配置的脚本拒绝运行（这是刻意的，见 `docs/operations.md` 第四节） | `pip install pyyaml` |
-| 必需（二选一） | `zstd` 命令 或 `zstandard` 模块 | 解压 `session.v4.jsonl.zstd` | 看账类脚本报「解压需要二选一」 | Windows 用 Git for Windows 自带；macOS `brew install zstd`；Debian/Ubuntu `apt install zstd`；或 `pip install zstandard` |
+| 必需（二选一） | `zstandard` 模块 或 `zstd` 命令 | 解压 `session.v4.jsonl.zstd` | 看账类脚本报「解压需要二选一」 | 首选 `pip install zstandard`（跨平台、CI 同款）；也可装系统包：macOS `brew install zstd`、Debian/Ubuntu `apt install zstd`。Windows 不保证自带 `zstd.exe` |
 | 可选 | Node 18+ | `verify_guard.mjs` 守卫自检 | 只少这一项自检 | `node --version` 能跑即可 |
 
 一条命令核对：
@@ -170,9 +170,9 @@ token-governance/
   skills/                      # 10 个技能（9 个待机）
   scripts/                     # 23 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 110 项断言 + fixtures
+  tests/                       # 118 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
-  .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
+  .github/workflows/ci.yml     # Windows 验收门禁；Ubuntu/macOS 矩阵只探测，不阻塞
 ```
 
 > 需求澄清技能 `clarify-needs` 已于 v0.11.1 迁出，独立仓库：
@@ -185,14 +185,14 @@ token-governance/
 ```bash
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 110 项断言，纯标准库（测试替代 zstd 时会用 zstandard）
+python tests/run_tests.py             # 118 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
 都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
-`.github/workflows/ci.yml` 在 Windows 上跑同一套命令作为合并门禁；Linux 只做探测（不阻塞），因为验收环境是 Windows。
+`.github/workflows/ci.yml`：Windows job 是合并门禁（跑同一套命令）；另有两个非阻塞 job —— Ubuntu/macOS × Python 3.9/3.12 的兼容矩阵，与 Linux 全量测试探测。验收环境是 Windows，非阻塞 job 红灯先判断是产品问题还是平台用例。
 
 `doctor --apply` 只执行两件可回滚的事：拍补丁快照、记首日基线。它不改 `cordis.patch.yml`、不删技能、不动 preset——这些要人裁决。
 
@@ -297,7 +297,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
-| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 110 项 |
+| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 118 项 |
 | v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |
 | v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |

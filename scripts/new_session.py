@@ -35,12 +35,17 @@ def main():
     a = ap.parse_args()
     title = a.title or a.session_id
     root = a.root or memory_root(a.config)
-    dst = os.path.join(os.path.expanduser(root), a.workspace, a.session_id)
+    root_x = os.path.expanduser(os.path.expandvars(str(root)))
+    if root_x.startswith("~"):
+        # expanduser 展不开（HOME/USERPROFILE 都没设）时它会原样返回 ~，继续跑会在 cwd 建字面 ~ 目录
+        sys.exit(f"无法展开 {root}：HOME / USERPROFILE 都没设置。\n"
+                 "用 --root 指定绝对路径，或设好 HOME 再跑。")
+    dst = os.path.join(root_x, a.workspace, a.session_id)
     if os.path.exists(dst):
         print("已存在:", dst); return
     # 先确认根能建目录：根是文件、盘不存在、无权限时给一句话，不留半截目录
-    if os.path.exists(root) and not os.path.isdir(root):
-        sys.exit(f"--root / memory_root 指向的是文件而不是目录: {root}")
+    if os.path.exists(root_x) and not os.path.isdir(root_x):
+        sys.exit(f"--root / memory_root 指向的是文件而不是目录: {root_x}")
     parent = os.path.dirname(dst) or "."
     try:
         os.makedirs(os.path.join(dst, "30-logs"), exist_ok=True)

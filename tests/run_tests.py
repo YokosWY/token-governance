@@ -86,8 +86,9 @@ def main():
     os.makedirs(os.path.join(home, "skills"), exist_ok=True)
     ok = put_session(home, "session-retry", "retry_session.jsonl", tmp)
     if not ok:
-        print("SKIP 压缩工具不可用（zstd / python zstandard 都没有）")
-        return 2
+        # 没解压器就没法造夹具：这是环境缺件，不是失败（CI 里 continue-on-error 的 job 不该因此判红）
+        print("SKIP 压缩工具不可用（zstd / python zstandard 都没有）：装 `pip install zstandard` 后重跑")
+        return 0
     s_retry = os.path.join(home, "sessions", "session-retry", "session.v4.jsonl.zstd")
     put_session(home, "session-literal", "literal_session.jsonl", tmp)
 
@@ -545,6 +546,12 @@ def main():
     with open(os.path.join(tmp, "patch_sample.yml"), "w", encoding="utf-8") as f:
         f.write("- id: demo\n")
     py_dir = os.path.dirname(PY)
+    # 去掉 PATH 里的 zstd 与模块：解压器算缺失（PATH 构造按平台来，别把 Windows 的 SystemRoot 搬到 POSIX）
+    if os.name == "nt":
+        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        bare_path = os.pathsep.join([py_dir, sysroot, os.path.join(sysroot, "system32")])
+    else:
+        bare_path = py_dir
     for label, depdir in (("缺 pyyaml", dep_noyaml), ("缺 zstandard", dep_nozstd)):
         offenders = []
         for script, args in script_args.items():
@@ -553,9 +560,29 @@ def main():
                 offenders.append(f"{script}:{r.returncode}")
         check(f"{label} 时没有脚本抛 traceback", not offenders, ", ".join(offenders))
 
-    # 环境自检：必需项缺失必须非零退出，且 JSON 里能点名缺什么
-    r = run("env_check.py")
-    check("env_check 在齐备环境返回 0", r.returncode == 0, f"rc={r.returncode}")
+    # 第三组：zstd 命令与 zstandard 模块**同时**没有 —— 上一组只注入了模块，本机 CLI 还在，
+    # 根本走不到「解压需要二选一」那一支（评审指出过）。
+    both_missing = []
+    for script, args in script_args.items():
+        r = run_env(script, args, extra_env={"PYTHONPATH": dep_nozstd}, path_override=bare_path)
+        if "Traceback" in (r.stdout + r.stderr):
+            both_missing.append(f"{script}:{r.returncode}")
+    check("解压器完全缺失时没有脚本抛 traceback", not both_missing, ", ".join(both_missing))
+    r = run_env("baseline.py", ["--config", e2e_cfg], extra_env={"PYTHONPATH": dep_nozstd},
+                path_override=bare_path)
+    check("解压器完全缺失时 baseline 给「二选一」提示",
+          "解压需要二选一" in (r.stdout + r.stderr) and "zstandard" in (r.stdout + r.stderr),
+          (r.stdout + r.stderr)[:80])
+
+    # 环境自检：必需项缺失必须非零退出，且 JSON 里能点名缺什么；rc 与 JSON 的 ok 必须一致
+    r = run_env("env_check.py", ["--json"])
+    try:
+        ec_full = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        ec_full = {}
+    check("env_check 的退出码与 JSON ok 一致",
+          r.returncode == (0 if ec_full.get("ok") else 1),
+          f"rc={r.returncode} ok={ec_full.get('ok')}")
     r = run_env("env_check.py", ["--json"], extra_env={"PYTHONPATH": dep_noyaml})
     try:
         ec = json.loads(r.stdout)
@@ -564,12 +591,6 @@ def main():
     check("env_check 缺 pyyaml 时非零且点名",
           r.returncode == 1 and "pyyaml" in (ec.get("missing_required") or []),
           f"rc={r.returncode} missing={ec.get('missing_required')}")
-    # 去掉 PATH 里的 zstd 与模块：解压器算缺失（PATH 构造按平台来，别把 Windows 的 SystemRoot 搬到 POSIX）
-    if os.name == "nt":
-        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
-        bare_path = os.pathsep.join([py_dir, sysroot, os.path.join(sysroot, "system32")])
-    else:
-        bare_path = py_dir
     r = run_env("env_check.py", ["--json"], extra_env={"PYTHONPATH": dep_nozstd}, path_override=bare_path)
     try:
         ec2 = json.loads(r.stdout)
@@ -578,6 +599,16 @@ def main():
     check("env_check 缺解压器时非零且点名",
           r.returncode == 1 and "unzip" in (ec2.get("missing_required") or []),
           f"rc={r.returncode} missing={ec2.get('missing_required')}")
+
+    # env_check 也要把「配置写坏」判成缺项（否则会拿着回退的 ~/.dsh 报「齐备」）
+    r = run_env("env_check.py", ["--json", "--config", bad_cfg])
+    try:
+        ec3 = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        ec3 = {}
+    check("env_check 在坏配置下非零且 config_error 非空",
+          r.returncode == 1 and ec3.get("config_error") and "config" in (ec3.get("missing_required") or []),
+          f"rc={r.returncode} err={str(ec3.get('config_error'))[:50]}")
 
     # BOM + 空格 + 中文路径：能跑通
     odd_home = os.path.join(tmp, "带 空格 的 home")
@@ -601,6 +632,13 @@ def main():
         check("无 HOME 时提示 ~ 展不开且无 traceback",
               "无法展开" in (r.stderr or "") and "Traceback" not in (r.stderr or ""),
               (r.stderr or "")[:80])
+        r = subprocess.run([PY, os.path.join(SCRIPTS, "new_session.py"),
+                            "w", "s", "--root", "~"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=no_home_env, cwd=ROOT)
+        check("无 HOME 时 new_session 拒绝在 cwd 建字面 ~ 目录",
+              r.returncode != 0 and not os.path.isdir(os.path.join(ROOT, "~")),
+              f"rc={r.returncode}")
 
     # 目标不可写（用「根是文件」当探针）：可读报错、不留目录
     as_file = os.path.join(tmp, "not-a-dir")
@@ -626,6 +664,24 @@ def main():
                        cwd=ROOT)
     check("CI 环境下 audit_pack 不把 runner 当泄露", r.returncode == 0,
           (r.stdout + r.stderr)[-120:])
+    # 普通用户名（user/test/dev）不是泄露线索：只认路径形状，否则 Linux/macOS 一片高危
+    r = subprocess.run([PY, os.path.join(SCRIPTS, "audit_pack.py")],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "USER": "test", "USERNAME": "test"},
+                       cwd=ROOT)
+    check("普通用户名不触发 audit_pack 高危", r.returncode == 0, (r.stdout + r.stderr)[-120:])
+    # 真泄露要能抓住：造一个含本机路径形状的文件（临时目录里，不进仓库）
+    leak_dir = os.path.join(tmp, "leakproj")
+    os.makedirs(os.path.join(leak_dir, "docs"), exist_ok=True)
+    with open(os.path.join(leak_dir, "docs", "a.md"), "w", encoding="utf-8") as f:
+        f.write("路径：C:/Users/tgcanary/secret/x\n")
+    with open(os.path.join(leak_dir, "README.md"), "w", encoding="utf-8") as f:
+        f.write("# x\n")
+    r = subprocess.run([PY, os.path.join(SCRIPTS, "audit_pack.py"), "--root", leak_dir,
+                        "--local-id", "tgcanary"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+    check("路径里的本机标识会被 audit_pack 抓住", r.returncode == 1 and "tgcanary" not in r.stdout,
+          (r.stdout + r.stderr)[-120:])
 
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
@@ -634,6 +690,17 @@ def main():
     # 17. 包自检
     r = run("audit_pack.py")
     check("audit_pack 通过", r.returncode == 0)
+
+    # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
+    # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）
+    with open(os.path.join(ROOT, "data", "counts.json"), encoding="utf-8") as f:
+        counts = json.load(f)
+    real_scripts = len([x for x in os.listdir(SCRIPTS) if x.endswith((".py", ".mjs"))])
+    check("data/counts.json 的脚本数与实际一致", counts.get("scripts") == real_scripts,
+          f"counts={counts.get('scripts')} 实际={real_scripts}")
+    check("data/counts.json 的测试数与实跑一致（加测试要同步）",
+          counts.get("tests") == len(results) + 1,
+          f"counts={counts.get('tests')} 实跑={len(results) + 1}")
 
     bad = [n for n, okk, _ in results if not okk]
     print(f"\n{len(results) - len(bad)}/{len(results)} 通过")

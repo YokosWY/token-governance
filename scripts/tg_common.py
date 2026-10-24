@@ -17,9 +17,47 @@ dsh_home 唯一口径（本文件是唯一实现，脚本里别再手写）：
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 DEFAULT_CONFIG = "config.yaml"
+
+
+def decompress_bytes(path):
+    """解压 .zstd：先试 zstd 命令，没有再用 Python zstandard；两者都不可用时一句话退出。
+
+    为什么收在公共层：这段逻辑原先在 baseline / failure_analysis / turn_cost / skill_usage /
+    measure_modules 里各有一份，且都直接 `zstd.ZstdDecompressor()`——遇到同名假模块（能
+    import 但没有 API）会抛 AttributeError traceback。
+    """
+    try:
+        r = subprocess.run(["zstd", "-dc", path], capture_output=True)
+        if r.returncode == 0 and r.stdout:
+            return r.stdout
+    except FileNotFoundError:
+        pass
+    try:
+        import zstandard as zstd
+        dctx = zstd.ZstdDecompressor()
+    except ImportError:
+        sys.exit("解压需要二选一：`pip install zstandard`（首选）或装 `zstd` 命令"
+                 "（macOS: brew install zstd；Debian/Ubuntu: apt install zstd）。")
+    except AttributeError:
+        sys.exit("装的 zstandard 没有 ZstdDecompressor API（可能是同名假模块）："
+                 "pip install -U zstandard")
+    with open(path, "rb") as f:
+        data = f.read()
+    out = []
+    while data:
+        dobj = dctx.decompressobj()
+        try:
+            out.append(dobj.decompress(data))
+        except Exception:
+            sys.exit(f"zstd 解压失败（文件损坏或不是 zstd 流）: {path}")
+        if not dobj.eof:
+            break
+        data = dobj.unused_data
+    return b"".join(out)
 
 
 def utf8_stdio():
@@ -77,7 +115,7 @@ def load_yaml(path, strict=False):
 
     - 文件不存在 → 返回 {}（这是正常情况，不算错）
     - 文件存在但 YAML 坏 → strict 退出，否则 stderr 警告
-    - 没装 pyyaml → strict 退出，否则 stderr 警告（README 说零依赖，但不是所有脚本都只用标准库）
+    - 没装 pyyaml → strict 退出，否则 stderr 警告（pyyaml 是配置读取的必需项，见 README 依赖分级）
     """
     if not path or not os.path.isfile(path):
         return {}

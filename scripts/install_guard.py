@@ -121,7 +121,8 @@ def install(home: Path, profile: str, apply: bool) -> int:
     elif not apply:
         print("   （dry-run，未写入）")
 
-    print("\n完成。重启 DSH 后生效；验证：cscript //nologo <home>\\... 或看会话里是否出现【循环守卫】提醒。")
+    print("\n完成。重启 DSH 后生效；验证：看会话里是否出现【循环守卫】提醒"
+          "（Windows 也可用 `cscript //nologo <home>\\...`，POSIX 无此命令）。")
     return 0
 
 

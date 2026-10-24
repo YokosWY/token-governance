@@ -321,7 +321,7 @@ python scripts/measure_modules.py --session f7a82a7e --dsh-home D:/AI/DSH-NEXT -
 | 任意会话日志（jsonl） | 逐 step 的 usage、前缀突增事件 | `python scripts/cache_audit.py --jsonl <path>` |
 | 都没有 | 手工抓 10 次响应，抄 `usage` 里的两个数 | 填进 `--jsonl` 模板（脚本会打印） |
 
-脚本只读、零写入、纯标准库，换机器不用装依赖。
+脚本只读、零写入；核心计算只用标准库，读 `config.yaml` 需要 pyyaml，读 `.zstd` 会话日志需要 `zstandard` 或 `zstd` 命令。
 
 ---
 
