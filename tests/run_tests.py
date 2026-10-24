@@ -590,6 +590,18 @@ def main():
     check("BOM + 空格 + 中文路径下 baseline 能跑", r.returncode == 0 and "samples" in r.stdout,
           f"rc={r.returncode} err={(r.stderr or '')[:60]}")
 
+    # 无 HOME / USERPROFILE：可读报错 + 明确提示 ~ 展不开（POSIX 下 expanduser 走 pwd，跳过）
+    if os.name == "nt":
+        no_home_env = {k: v for k, v in os.environ.items()
+                       if k.upper() not in ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")}
+        r = subprocess.run([PY, os.path.join(SCRIPTS, "retry_patterns.py"),
+                            "--days", "3", "--config", os.path.join(tmp, "nope.yaml")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=no_home_env, cwd=ROOT)
+        check("无 HOME 时提示 ~ 展不开且无 traceback",
+              "无法展开" in (r.stderr or "") and "Traceback" not in (r.stderr or ""),
+              (r.stderr or "")[:80])
+
     # 目标不可写（用「根是文件」当探针）：可读报错、不留目录
     as_file = os.path.join(tmp, "not-a-dir")
     with open(as_file, "w", encoding="utf-8") as f:

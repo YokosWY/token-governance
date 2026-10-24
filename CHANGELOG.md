@@ -11,7 +11,12 @@
 - README 的依赖声明改正：原文写「零第三方运行时依赖」，同一份文档的安装段却写「前提：pyyaml」——事实是 pyyaml 必需（配置读取）、解压器必需（会话日志）、Node 可选（守卫自检）。新版给依赖分级表（级别 / 用途 / 缺了会怎样 / 安装），并说明缺必需项时的行为是「一句修复提示」而不是 traceback；README_EN 同步
 - `docs/adaptation.md` 的「先探测」加第 0 项：`env_check.py`；`README` 验收段与安装段都指向它
 - CI：Windows 验收 job 增加 `env_check`；新增 Ubuntu/macOS × Python 3.9/3.12 的兼容矩阵（非阻塞，验收环境仍是 Windows）。本机没有 WSL/Docker，跨平台只能静态扫描 + 矩阵，**不声称已实测**
-- 测试 98 → 106：18 个脚本 × 缺 pyyaml / 缺 zstandard 两种注入（断言无 `Traceback`）、`env_check` 在齐备/缺项环境的退出码与点名、BOM + 空格 + 中文路径可跑、目标不可写时可读报错且不留目录
+- 修 CI（自 2026-10-23 `99dc697` 起一直红，5 个提交没人发现）：`doctor 给出动作清单` 断言依赖本机真实数据，GitHub runner 上没有会话/账本 → actions 为空 → 失败。这类「空数据」正是新用户第一天的样子：
+  - `doctor` 没有动作时补一条 `first-run`（先查环境、正常用一天），不再输出空清单
+  - `doctor` 新增 `--dsh-home` / `--config` 并透传给 5 个子脚本：整个体检看哪份数据，一处指定、处处一致
+  - 测试改用空 home 断言 `first-run`，不再依赖本机数据
+- 无 HOME / USERPROFILE 时，解析链会提示「无法展开 ~」，而不是把字面 `~` 原样塞进错误信息
+- 测试 98 → 109：18 个脚本 × 缺 pyyaml / 缺 zstandard 两种注入（断言无 `Traceback`）、`env_check` 在齐备/缺项环境的退出码与点名、BOM + 空格 + 中文路径可跑、无 HOME 可读报错、目标不可写时可读报错且不留目录、坏配置下 `env_check`/`doctor` 仍能自检
 
 ## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
 - 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_yaml()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这些事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次

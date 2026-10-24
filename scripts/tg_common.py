@@ -144,6 +144,10 @@ def resolve_dsh_homes(arg="", cfg=None, base=None, env=None):
         homes = [expand(env_home or "~/.dsh")]
     out, seen = [], set()
     for h in homes:
+        # expanduser 展不开时会原样返回 "~/..."：报错里出现字面 ~ 最容易被看错
+        if h.startswith("~"):
+            print(f"[warn] 无法展开 {h}（HOME / USERPROFILE 都没设）；"
+                  "请用 --dsh-home 或 config.yaml 的 dsh_home 指定绝对路径", file=sys.stderr)
         real = os.path.realpath(h)
         if real in seen:
             continue
