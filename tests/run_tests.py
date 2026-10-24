@@ -639,6 +639,12 @@ def main():
         check("无 HOME 时 new_session 拒绝在 cwd 建字面 ~ 目录",
               r.returncode != 0 and not os.path.isdir(os.path.join(ROOT, "~")),
               f"rc={r.returncode}")
+    else:
+        # 平台相关用例也算一条：计数必须与平台无关，否则 data/counts.json 无法做单一真相
+        for name in ("无 HOME 时提示 ~ 展不开且无 traceback",
+                     "无 HOME 时 new_session 拒绝在 cwd 建字面 ~ 目录"):
+            results.append((name, True, "skip"))
+            print(f"PASS {name}  SKIP（仅 Windows：POSIX 的 expanduser 走 pwd）")
 
     # 目标不可写（用「根是文件」当探针）：可读报错、不留目录
     as_file = os.path.join(tmp, "not-a-dir")
@@ -690,6 +696,24 @@ def main():
     # 17. 包自检
     r = run("audit_pack.py")
     check("audit_pack 通过", r.returncode == 0)
+
+    # 21. 语法向下兼容：README 声明 Python 3.9+，CI 矩阵只跑 3.10/3.12（runner 已无 3.9），
+    # 用 feature_version 把「3.9 能解析」变成可判真假的一条，而不是靠口头承诺。
+    import ast as _ast
+    syntax_bad = []
+    for p in sorted(os.listdir(SCRIPTS)):
+        if not p.endswith(".py"):
+            continue
+        try:
+            _ast.parse(open(os.path.join(SCRIPTS, p), encoding="utf-8").read(),
+                       feature_version=(3, 9))
+        except SyntaxError as e:
+            syntax_bad.append(f"{p}:{e.lineno}")
+    try:
+        _ast.parse(open(__file__, encoding="utf-8").read(), feature_version=(3, 9))
+    except SyntaxError as e:
+        syntax_bad.append(f"tests:{e.lineno}")
+    check("全部脚本在 Python 3.9 语法下可解析", not syntax_bad, ", ".join(syntax_bad))
 
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）

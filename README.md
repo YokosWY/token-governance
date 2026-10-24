@@ -9,7 +9,7 @@
 <img alt="version" src="https://img.shields.io/badge/version-v0.13.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-23-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-118-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-119-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -170,7 +170,7 @@ token-governance/
   skills/                      # 10 个技能（9 个待机）
   scripts/                     # 23 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 118 项断言 + fixtures
+  tests/                       # 119 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁；Ubuntu/macOS 矩阵只探测，不阻塞
 ```
@@ -185,7 +185,7 @@ token-governance/
 ```bash
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 118 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 119 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
@@ -297,7 +297,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
-| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 118 项 |
+| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 119 项 |
 | v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |
 | v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |

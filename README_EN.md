@@ -97,7 +97,7 @@ token-governance/
   skills/                      # 10 skills (9 idle by default)
   scripts/                     # 23 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 118 assertions + fixtures
+  tests/                       # 119 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate; Ubuntu/macOS matrix is a non-blocking probe
 ```
@@ -110,7 +110,7 @@ token-governance/
 ```bash
 python scripts/env_check.py           # Python / pyyaml / decompressor / node / dsh_home
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 118 assertions, standard library (zstandard is used when the zstd binary is absent)
+python tests/run_tests.py             # 119 assertions, standard library (zstandard is used when the zstd binary is absent)
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
