@@ -27,11 +27,10 @@ jobs:
         run: python scripts/audit_pack.py
 
   # 兼容性矩阵：证明「没有 Windows 专有依赖、没有只在新 Python 上能跑的语法」。
-  # 非阻塞（验收环境是 Windows）；红了先判断是产品问题还是平台用例问题，别直接改断言。
+  # 2026-10-24 起是真实门禁（首轮全绿后转正）；红了先判断是产品问题还是平台用例问题，别直接改断言。
   matrix:
     name: matrix (py${{ matrix.python }} · ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

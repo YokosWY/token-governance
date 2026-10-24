@@ -99,7 +99,7 @@ token-governance/
   plugins/dsh-loop-guard/      # loop guard source
   tests/                       # 119 assertions + fixtures
   docs/                        # 5 documents
-  .github/workflows/ci.yml     # Windows gate; Ubuntu/macOS matrix is a non-blocking probe
+  .github/workflows/ci.yml     # Windows gate + Ubuntu/macOS compatibility matrix (also a gate)
 ```
 
 > `clarify-needs` moved out in v0.11.1 into its own repo:
@@ -115,9 +115,9 @@ python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
 All are read-only and fail with a non-zero exit code. The Windows CI job runs the same
-commands as a merge gate. Two extra jobs are non-blocking: an Ubuntu/macOS × Python
-3.9/3.12 compatibility matrix and a full Linux test probe — the acceptance environment is
-Windows, so a red non-blocking job means "check whether it is product or platform test".
+commands as a merge gate, together with an Ubuntu/macOS × Python 3.10/3.12 compatibility
+matrix (promoted to a gate after its first green run on 2026-10-24). A full Linux test probe
+still runs non-blocking.
 
 ## Limits
 

@@ -172,7 +172,7 @@ token-governance/
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   tests/                       # 119 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
-  .github/workflows/ci.yml     # Windows 验收门禁；Ubuntu/macOS 矩阵只探测，不阻塞
+  .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
 
 > 需求澄清技能 `clarify-needs` 已于 v0.11.1 迁出，独立仓库：
@@ -192,7 +192,7 @@ python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预�
 
 都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
-`.github/workflows/ci.yml`：Windows job 是合并门禁（跑同一套命令）；另有两个非阻塞 job —— Ubuntu/macOS × Python 3.9/3.12 的兼容矩阵，与 Linux 全量测试探测。验收环境是 Windows，非阻塞 job 红灯先判断是产品问题还是平台用例。
+`.github/workflows/ci.yml` 有两个门禁：Windows 验收 job（跑同一套命令）与 Ubuntu/macOS × Python 3.10/3.12 的兼容矩阵（2026-10-24 首轮全绿后转正）；另有 Linux 全量测试探测，不阻塞。
 
 `doctor --apply` 只执行两件可回滚的事：拍补丁快照、记首日基线。它不改 `cordis.patch.yml`、不删技能、不动 preset——这些要人裁决。
 
