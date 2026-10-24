@@ -55,15 +55,23 @@ def fmt_int(x):
         return "?"
 
 
-def collect(days):
-    """各采集器返回 (数据, 错误)。错误只提示，不让整页失败。"""
+def collect(days, dsh_home="", config=""):
+    """各采集器返回 (数据, 错误)。错误只提示，不让整页失败。
+
+    --dsh-home / --config 透传给子脚本：整个体检看哪一份数据，必须一处指定、处处一致。
+    """
     data, errors = {}, {}
+    passthru = []
+    if dsh_home:
+        passthru += ["--dsh-home", dsh_home]
+    if config and os.path.isfile(config):
+        passthru += ["--config", config]
     pairs = [
-        ("preflight", ("preflight.py", "--json")),
-        ("schema", ("schema_budget.py", "--json")),
-        ("skills", ("skill_usage.py", "--days", str(days), "--json")),
-        ("failure", ("failure_analysis.py", "--days", str(days), "--json")),
-        ("turns", ("turn_cost.py", "--days", str(days), "--json")),
+        ("preflight", ("preflight.py", "--json", *passthru)),
+        ("schema", ("schema_budget.py", "--json", *passthru)),
+        ("skills", ("skill_usage.py", "--days", str(days), "--json", *passthru)),
+        ("failure", ("failure_analysis.py", "--days", str(days), "--json", *passthru)),
+        ("turns", ("turn_cost.py", "--days", str(days), "--json", *passthru)),
     ]
     for key, argv in pairs:
         d, err = run_json(*argv)
@@ -173,6 +181,18 @@ def build_actions(data):
             "command": "python scripts/cache_audit.py",
             "estimate": "见 preflight 的未命中占成本比例",
         })
+    # 5. 一条都没有（新装机器、窗口内没有会话/账本）：给一条能立刻做的，不要输出空清单
+    if not acts:
+        acts.append({
+            "id": "first-run",
+            "severity": "低",
+            "title": "窗口内还没有可分析的数据",
+            "detail": ("没有会话日志或账本：新装的机器属正常。账本由 cost-meter 写入，"
+                       "要正常用一天才有；技能与工具清单也要有会话才能量。"),
+            "action": "先确认环境，再正常用一天后重跑 doctor",
+            "command": "python scripts/env_check.py",
+            "estimate": "无数据时不产生成本结论，不要在这时候下判断",
+        })
     return acts[:4]
 
 
@@ -208,11 +228,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=7, help="失败与成本的回看窗口")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--config", default="config.yaml", help="透传给子脚本")
+    ap.add_argument("--dsh-home", "--home", dest="dsh_home", default="",
+                    help="透传给子脚本；不给则各子脚本按 config / 环境变量解析")
     ap.add_argument("--apply", action="store_true", help="执行可回滚动作（快照 + 基线）")
     ap.add_argument("--print-actions", action="store_true", help="只预览 --apply 会做什么")
     a = ap.parse_args()
 
-    data, errors = collect(a.days)
+    data, errors = collect(a.days, a.dsh_home, a.config)
     actions = build_actions(data)
     applied = []
     if a.apply or a.print_actions:

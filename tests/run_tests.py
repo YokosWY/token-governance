@@ -235,14 +235,18 @@ def main():
     check("超预算退出码 1", r2.returncode == 1, str(r2.returncode))
     check("预算内退出码 0", r3.returncode == 0, str(r3.returncode))
 
-    # 13. doctor 单入口：采集失败也要出动作清单，不能崩
-    r = run("doctor.py", "--days", "1", "--json")
+    # 13. doctor 单入口：采集失败也要出动作清单，不能崩；空数据必须给 first-run 而不是空数组
+    empty_home = os.path.join(tmp, "doctor-empty-home")
+    os.makedirs(empty_home, exist_ok=True)
+    r = run("doctor.py", "--days", "1", "--json", "--dsh-home", empty_home)
     try:
         doc = json.loads(r.stdout)
     except json.JSONDecodeError:
         doc = {}
-    check("doctor 给出动作清单", isinstance(doc.get("actions"), list) and len(doc["actions"]) >= 1,
-          str(type(doc.get("actions"))))
+    acts = doc.get("actions") or []
+    check("doctor 空数据也给动作清单（first-run）",
+          isinstance(acts, list) and any(a.get("id") == "first-run" for a in acts),
+          f"actions={[a.get('id') for a in acts]}")
     check("doctor 缺数据不崩", r.returncode == 0, str(r.returncode))
 
     # 14. 守卫命中统计（读 events.jsonl；坏行跳过）
@@ -470,7 +474,7 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py")
-    tolerant_scripts = {"env_check.py"}
+    tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
     for fn in os.listdir(SCRIPTS):
@@ -594,6 +598,14 @@ def main():
     check("目标不可写时 new_session 可读报错",
           r.returncode != 0 and "Traceback" not in (r.stderr or ""), f"rc={r.returncode}")
     check("目标不可写时不留下目录", not os.path.exists(os.path.join(as_file, "w")), "")
+
+    # 自检类脚本（env_check / doctor）在坏配置下必须照常给诊断，不能跟着一起退出
+    r = run("env_check.py", "--json", "--config", bad_cfg)
+    check("坏配置：env_check 仍出报告且无 traceback",
+          "Traceback" not in (r.stderr or "") and r.returncode in (0, 1), f"rc={r.returncode}")
+    r = run("doctor.py", "--days", "1", "--json", "--config", bad_cfg)
+    check("坏配置：doctor 仍出体检单（first-run）且无 traceback",
+          r.returncode == 0 and "first-run" in r.stdout, f"rc={r.returncode}")
 
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
