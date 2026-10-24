@@ -3,7 +3,7 @@
 
 不给 --root 时先读 config.yaml 的 memory_root，读不到再用 ~/tg-memory。
 """
-import argparse, datetime, os, shutil
+import argparse, datetime, os, shutil, sys
 
 from tg_common import expand, load_config, utf8_stdio
 
@@ -38,12 +38,24 @@ def main():
     dst = os.path.join(os.path.expanduser(root), a.workspace, a.session_id)
     if os.path.exists(dst):
         print("已存在:", dst); return
-    os.makedirs(os.path.join(dst, "30-logs"), exist_ok=True)
+    # 先确认根能建目录：根是文件、盘不存在、无权限时给一句话，不留半截目录
+    if os.path.exists(root) and not os.path.isdir(root):
+        sys.exit(f"--root / memory_root 指向的是文件而不是目录: {root}")
+    parent = os.path.dirname(dst) or "."
+    try:
+        os.makedirs(os.path.join(dst, "30-logs"), exist_ok=True)
+    except OSError as e:
+        sys.exit(f"建不了目录 {dst}（{e.strerror or e}）。\n"
+                 f"检查：{parent} 是否可写、盘符是否存在、路径是否过长（Windows 260 字符限制）。")
     for rel, tpl in FILES.items():
         p = os.path.join(dst, rel)
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        open(p, "w", encoding="utf-8").write(tpl.format(title=title, sid=a.session_id,
-                                                        ws=a.workspace, date=datetime.date.today().isoformat()))
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(tpl.format(title=title, sid=a.session_id,
+                                   ws=a.workspace, date=datetime.date.today().isoformat()))
+        except OSError as e:
+            sys.exit(f"写不了 {p}（{e.strerror or e}）。")
     print("created:", dst)
 
 if __name__ == "__main__":

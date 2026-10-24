@@ -5,8 +5,10 @@ English | [简体中文](README.md)
 A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
 usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
 
-10 skills, 22 scripts, 1 plugin. Scripts first, no third-party runtime dependencies.
-Runs on the configuration layer of DeepSeek Harness.
+10 skills, 23 scripts, 1 plugin. Two required dependencies: Python 3.9+ and pyyaml;
+unzipping session logs also needs either the `zstd` binary or the `zstandard` module,
+and Node is only needed for the guard self-check. Run `python scripts/env_check.py` on a
+new machine. Runs on the configuration layer of DeepSeek Harness.
 
 Day-to-day entry point: `python scripts/doctor.py` — one command folds schema size,
 cache, cost and failures into one page with ranked actions and their estimates.
@@ -41,8 +43,19 @@ per-turn CNY  median 0.0548  mean 0.0932  P90 0.22
 
 ## Install
 
-Requirements: Python 3.9+, pyyaml; either the `zstd` binary or `pip install zstandard`
-to decompress session logs; Node 18+ only for the guard self-check.
+Dependencies by level — when a required one is missing the scripts print a fix command
+insist of a traceback:
+
+| Level | Dependency | Purpose | If missing |
+|---|---|---|---|
+| required | Python ≥ 3.9 | every script | cannot run |
+| required | `pyyaml` | read `config.yaml` | config-driven scripts refuse to run (intentional, see `docs/operations.md` §4) |
+| required (either) | `zstd` binary or `zstandard` | decompress `session.v4.jsonl.zstd` | audit scripts say "need one of the two" |
+| optional | Node 18+ | `verify_guard.mjs` self-check | that one check is skipped |
+
+```bash
+python scripts/env_check.py            # required / optional / info, with fix commands; exit 1 if a required item is missing
+```
 
 ```bash
 cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) skills, effective after restart
@@ -82,9 +95,9 @@ token-governance/
   config.example.yaml          # three required edits, rest optional
   data/metrics.json            # single source for document numbers
   skills/                      # 10 skills (9 idle by default)
-  scripts/                     # 22 scripts: check-up / measure / attribute / configure / quality
+  scripts/                     # 23 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 98 assertions + fixtures
+  tests/                       # 106 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate; Linux is a non-blocking probe
 ```
@@ -95,14 +108,15 @@ token-governance/
 ## Verification
 
 ```bash
+python scripts/env_check.py           # Python / pyyaml / decompressor / node / dsh_home
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 98 assertions, standard library only
+python tests/run_tests.py             # 106 assertions, standard library (zstandard is used when the zstd binary is absent)
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
-All three are read-only and fail with a non-zero exit code. The Windows CI job runs the
-same three commands as a merge gate; Linux is probed but does not block, because the
-acceptance environment is Windows.
+All are read-only and fail with a non-zero exit code. The Windows CI job runs the same
+commands as a merge gate; Linux is probed but does not block, because the acceptance
+environment is Windows (see `docs/adaptation.md` for what that probe does and does not cover).
 
 ## Limits
 

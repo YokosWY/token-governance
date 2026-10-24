@@ -22,6 +22,10 @@ import io
 import re
 import sys
 
+from tg_common import utf8_stdio
+
+utf8_stdio()
+
 TOP = re.compile(r'^- id: (\S+)\s*$')
 
 

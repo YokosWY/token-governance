@@ -22,7 +22,9 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、22 个脚本、1 个插件；脚本优先、零第三方运行时依赖，装在 DeepSeek Harness 的配置层上。
+> 10 个技能、23 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
+> 依赖只有两项是必需的：Python 3.9+ 与 pyyaml；解压会话日志再要 `zstd` 命令或 `zstandard` 二选一，Node 仅用于守卫自检。
+> 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
 
 </div>
@@ -78,7 +80,21 @@ TG 体检 · 2026-10-23 16:23（回看 7 天）
 
 ## 安装
 
-前提：Python 3.9+、pyyaml；解压会话日志需要 `zstd` 命令或 `pip install zstandard`，二选一；循环守卫自检需要 Node 18+。
+依赖分级（缺必需项时脚本一律给一句可执行的修复提示，不会抛 traceback）：
+
+| 级别 | 依赖 | 用来干什么 | 缺了会怎样 | 安装 |
+|---|---|---|---|---|
+| 必需 | Python ≥ 3.9 | 所有脚本 | 跑不起来 | 装 3.9+（3.9 / 3.11 / 3.14 验过） |
+| 必需 | `pyyaml` | 读 `config.yaml` | 所有读配置的脚本拒绝运行（这是刻意的，见 `docs/operations.md` 第四节） | `pip install pyyaml` |
+| 必需（二选一） | `zstd` 命令 或 `zstandard` 模块 | 解压 `session.v4.jsonl.zstd` | 看账类脚本报「解压需要二选一」 | Windows 用 Git for Windows 自带；macOS `brew install zstd`；Debian/Ubuntu `apt install zstd`；或 `pip install zstandard` |
+| 可选 | Node 18+ | `verify_guard.mjs` 守卫自检 | 只少这一项自检 | `node --version` 能跑即可 |
+
+一条命令核对：
+
+```bash
+python scripts/env_check.py            # 必需/可选/信息三档，缺项给修复命令；必需项缺失时退出码 1
+python scripts/env_check.py --json     # 给安装脚本或 CI 读
+```
 
 ```bash
 cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) 技能入目录，重启 DSH 后生效
@@ -129,11 +145,11 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（22 个）
+### 脚本（23 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
-| 体检 | `doctor` / `schema_budget` | 一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
+| 体检 | `env_check` / `doctor` / `schema_budget` | 换机器先查依赖与数据目录；一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
 | 看账 | `cost_summary` / `cache_audit` / `compare_days` | 花了多少、命中多少、按天趋势 |
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
 | 改配置 | `preflight` / `gen_preset_override` / `patch_snapshot` / `install_guard` | 装前查冲突、升级后重生成、改坏能回滚 |
@@ -152,9 +168,9 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 22 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
+  scripts/                     # 23 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 98 项断言 + fixtures
+  tests/                       # 106 项断言 + fixtures
   docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
   .github/workflows/ci.yml     # Windows 验收门禁；Linux 只做探测，不阻塞
 ```
@@ -167,13 +183,14 @@ token-governance/
 ## 验收情况
 
 ```bash
+python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 98 项断言，纯标准库，不需要 pytest
+python tests/run_tests.py             # 106 项断言，纯标准库（测试替代 zstd 时会用 zstandard）
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-三条都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、10 项静态检查变异用例、文档数字一致、包自检。
+都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
 `.github/workflows/ci.yml` 在 Windows 上跑同一套命令作为合并门禁；Linux 只做探测（不阻塞），因为验收环境是 Windows。
 
@@ -280,6 +297,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
+| v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；CI 加跨平台矩阵；测试 106 项 |
 | v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |
 | v0.11.4 | 守卫顽固循环率；协议规则落在常驻层 |
 | v0.11.2 | 守卫命中计数 + 协议错误硬检查；siyuan 整块隔离；测试 32 项 |

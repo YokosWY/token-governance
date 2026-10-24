@@ -3,6 +3,16 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.13.0 — 2026-10-24（换机器能跑：依赖分级 + 环境自检 + 跨平台矩阵）
+- 新增 `scripts/env_check.py`：一条命令核对 Python 版本 / pyyaml / 解压器（`zstd` 或 `zstandard`）/ Node / `dsh_home` 可读与可写。分必需 / 可选 / 信息三档，缺必需项退出码 1，`--json` 给安装脚本或 CI 读。检测用「真的 import 一次」而不是 `find_spec`——后者只看得到文件，模块自己抛 `ImportError` 时会误判为可用（自测时抓到的假阳性）
+- 修 `scripts/check_yaml.py`：缺 pyyaml 时抛 `Traceback`（模块顶层 `import yaml`）；改为延迟导入 + 退出码 2。同时补文件不存在 / 非 UTF-8 / YAML 错 / 顶层非数组四类可读报错
+- 修 `scripts/new_session.py`：`--root` 指向文件或不可写时抛 `FileNotFoundError`；改为建目录前先判断并给一句话，写文件失败也报路径
+- 补 UTF-8 出口：`gen_metrics.py`、`gen_preset_override.py`、`check_yaml.py` 在 GBK 控制台下会输出乱码
+- README 的依赖声明改正：原文写「零第三方运行时依赖」，同一份文档的安装段却写「前提：pyyaml」——事实是 pyyaml 必需（配置读取）、解压器必需（会话日志）、Node 可选（守卫自检）。新版给依赖分级表（级别 / 用途 / 缺了会怎样 / 安装），并说明缺必需项时的行为是「一句修复提示」而不是 traceback；README_EN 同步
+- `docs/adaptation.md` 的「先探测」加第 0 项：`env_check.py`；`README` 验收段与安装段都指向它
+- CI：Windows 验收 job 增加 `env_check`；新增 Ubuntu/macOS × Python 3.9/3.12 的兼容矩阵（非阻塞，验收环境仍是 Windows）。本机没有 WSL/Docker，跨平台只能静态扫描 + 矩阵，**不声称已实测**
+- 测试 98 → 106：18 个脚本 × 缺 pyyaml / 缺 zstandard 两种注入（断言无 `Traceback`）、`env_check` 在齐备/缺项环境的退出码与点名、BOM + 空格 + 中文路径可跑、目标不可写时可读报错且不留目录
+
 ## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
 - 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_yaml()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这些事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次
 - **口径统一为**：`--dsh-home` / `--home` > `config.yaml` 的 `dsh_homes` / `dsh_home` > `$DSH_HOME` > `~/.dsh`；多 home 按真实路径去重。相对路径两种语义：config 里的值按 config 目录解析，CLI 参数按当前目录解析。文档见 `docs/operations.md` 第四节，自检 `python scripts/tg_common.py` 打印解析链

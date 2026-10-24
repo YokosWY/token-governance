@@ -9,6 +9,10 @@
 """
 import argparse, json, os, sys
 
+from tg_common import utf8_stdio
+
+utf8_stdio()
+
 BEGIN = "<!-- metrics:begin -->"
 END = "<!-- metrics:end -->"
 TARGETS = ["README.md", os.path.join("docs", "benchmark.md")]

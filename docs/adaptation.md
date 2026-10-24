@@ -6,6 +6,7 @@
 ## 一、先探测（30 秒）
 
 ```
+0. 环境齐不齐？         python scripts/env_check.py（Python / pyyaml / 解压器 / node / dsh_home）
 1. 有没有计费账本？      dsh_home/storages/cost-meter/ledger.json
 2. 有没有会话日志？      sessions/*/session.v4.jsonl.zstd（含逐 step usage）
 3. 有没有技能/插件目录？  skills_dir 存在且有 SKILL.md
@@ -14,6 +15,9 @@
 6. 计价货币？            ledger.config.currency 或问用户（CNY/USD/EUR）
 7. 单人还是共享账户？    同一账本是否多机/多人出现
 ```
+
+第 0 项是入口：依赖缺一层，后面全白跑。`env_check.py` 分必需/可选/信息三档，必需项缺失
+退出码 1，`--json` 给安装脚本读；它只读环境，不改任何文件。
 
 ## 二、七个维度
 

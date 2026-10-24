@@ -39,7 +39,7 @@ fix: 修正 README 语句错误
 ## 提交前自查
 
 1. `python scripts/audit_pack.py`（包完整性）或 `python scripts/check_yaml.py <补丁>`（配置语法）。
-2. `python tests/run_tests.py`（98 项回归；Windows 为验收环境，CI 跑同一套命令）。
+2. `python tests/run_tests.py`（106 项回归；Windows 为验收环境，CI 跑同一套命令）。
 3. `git diff --stat` 确认改动范围；`git status` 确认没有把 `_local/`、`config.yaml` 带进来。
 4. 若改动了文档中的数据，同步更新 `CHANGELOG.md` 与相关 `docs/`。
 
