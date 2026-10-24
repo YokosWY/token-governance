@@ -28,6 +28,9 @@
 - 测试 98 → 119：18 个脚本 × 缺 pyyaml / 缺 zstandard / 两者都缺 三种注入（断言无 `Traceback`）、`env_check` 四条判定（齐备 / 缺 pyyaml / 缺解压器 / 坏配置）与退出码自洽、BOM + 空格 + 中文路径、无 HOME 可读报错且不建 `~` 目录、目标不可写可读报错且不留目录、普通用户名不误报、路径形状泄露能抓到、计数单一真相自校验、Python 3.9 语法可解析
 - CI 矩阵的 Python 3.9 条目在 `ubuntu-latest`（26.04）上已不可用（setup-python 报 version not found）→ 运行时矩阵改为 3.10 / 3.12；「3.9 还能跑」改由 `ast.parse(feature_version=(3, 9))` 静态断言覆盖，不再靠口头承诺
 - 平台相关用例（仅 Windows 的两条）在 POSIX 上记为跳过但**仍计入总数**，否则 `data/counts.json` 的计数单一真相在跨平台时会假红（第一次跑矩阵就是这么红的）
+- 第三轮复核指出「徽章有检测、无门禁」：徽章不一致被判成「中」，CI 只看退出码 → 坏徽章仍然全绿，与 CONTRIBUTING 的「红了不能合」矛盾。现在徽章缺失/不一致、`counts` 的 version/skills/scripts 与实际不符一律算「高」（阻断）；并补一条用例：造一个 `tests-999` 徽章的最小仓库，断言 `audit_pack --root` 退出 1
+- 补「同名假模块」回归用例：只 `raise ImportError` 的注入抓不到「能 import 但缺 API」，现在用只定义 `VERSION` 的 `zstandard.py` 跑两条分支（`env_check` 判缺失、`baseline` 给一句话）
+- 测试 119 → 122
 
 ## v0.12.0 — 2026-10-24（公共层收敛：dsh_home 一个口径）
 - 新增 `scripts/tg_common.py`：`utf8_stdio()` / `expand()` / `load_yaml()` / `load_config()` / `resolve_dsh_home(s)` / `sessions_root()` / `ledger_path()` / `add_common_args()` / `emit_json()`。原先这些事在 14 个脚本里各写一遍，`reconfigure` 出现 22 次

@@ -689,6 +689,47 @@ def main():
     check("路径里的本机标识会被 audit_pack 抓住", r.returncode == 1 and "tgcanary" not in r.stdout,
           (r.stdout + r.stderr)[-120:])
 
+    # 「同名假模块」：能 import 但没有 API。只注入 ImportError 的 shim 抓不到这一类，
+    # 必须用 VERSION-only 的 shim 把两条分支都跑一遍（env_check 判定 + 解压那句话）。
+    fake_zstd = os.path.join(tmp, "fake_zstd")
+    os.makedirs(fake_zstd, exist_ok=True)
+    with open(os.path.join(fake_zstd, "zstandard.py"), "w", encoding="utf-8") as f:
+        f.write('VERSION = "0.0.0"\n')
+    r = run_env("env_check.py", ["--json"], extra_env={"PYTHONPATH": fake_zstd},
+                path_override=bare_path)
+    try:
+        ec4 = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        ec4 = {}
+    unzip_row = next((c for c in ec4.get("checks") or [] if c.get("key") == "unzip"), {})
+    check("假 zstandard 模块不被 env_check 判可用",
+          r.returncode == 1 and unzip_row.get("ok") is False
+          and "ZstdDecompressor" in (unzip_row.get("detail") or ""),
+          str(unzip_row.get("detail"))[:80])
+    r = run_env("baseline.py", ["--config", e2e_cfg], extra_env={"PYTHONPATH": fake_zstd},
+                path_override=bare_path)
+    check("假 zstandard 模块解压时给一句话而不是 AttributeError",
+          r.returncode != 0 and "ZstdDecompressor" in (r.stdout + r.stderr)
+          and "Traceback" not in (r.stdout + r.stderr),
+          (r.stdout + r.stderr)[:80])
+
+    # 徽章漂移必须阻断（「中」不阻断 CI 等于没门禁）
+    badge_root = os.path.join(tmp, "badgeproj")
+    for sub in ("data", "scripts", "skills", "docs"):
+        os.makedirs(os.path.join(badge_root, sub), exist_ok=True)
+    with open(os.path.join(badge_root, "data", "counts.json"), "w", encoding="utf-8") as f:
+        json.dump({"version": "0.13.0", "scripts": 0, "skills": 0, "tests": 1}, f)
+    with open(os.path.join(badge_root, "CHANGELOG.md"), "w", encoding="utf-8") as f:
+        f.write("# 变更记录\n\n## v0.13.0 — x\n")
+    with open(os.path.join(badge_root, "README.md"), "w", encoding="utf-8") as f:
+        f.write('<img src="https://img.shields.io/badge/version-v0.13.0-x">\n'
+                '<img src="https://img.shields.io/badge/scripts-0-x">\n'
+                '<img src="https://img.shields.io/badge/tests-999-x">\n'
+                '<img src="https://img.shields.io/badge/skills-0-x">\n')
+    r = run("audit_pack.py", "--root", badge_root)
+    check("徽章漂移让 audit_pack 非零退出", r.returncode == 1 and "tests" in r.stdout,
+          (r.stdout or "")[-100:])
+
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)

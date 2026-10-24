@@ -140,7 +140,8 @@ def main():
         n2 = check(os.path.basename(extra.rstrip("\\/")).upper(), extra, issues)
         print(f"{os.path.basename(extra)}: {extra}  （{n2} 个文件）")
 
-    # README 徽章 vs data/counts.json vs CHANGELOG 最新版本：徽章最容易漂，必须 gate
+    # README 徽章 vs data/counts.json vs 实际目录 vs CHANGELOG 最新版本。
+    # 这些一律算「高」：徽章是第一屏，漂了用户最先看到；「中」不阻断 CI，等于没门禁。
     counts_p = os.path.join(a.root, "data", "counts.json")
     rd = read(os.path.join(a.root, "README.md"))
     if os.path.isfile(counts_p):
@@ -148,10 +149,23 @@ def main():
             counts = json.load(open(counts_p, encoding="utf-8"))
         except Exception as e:
             counts = {}
-            issues.append(("TG", "中", f"data/counts.json 读不了：{e}"))
+            issues.append(("TG", "高", f"data/counts.json 读不了：{e}"))
         chg = read(os.path.join(a.root, "CHANGELOG.md"))
         m = re.search(r"^## v([0-9][0-9.]+)", chg, re.M)
         latest = m.group(1) if m else ""
+        if counts.get("version") and latest and counts["version"] != latest:
+            issues.append(("TG", "高",
+                           f"data/counts.json version={counts['version']} 与 CHANGELOG 最新 {latest} 不一致"))
+        real = {
+            "scripts": len([f for f in os.listdir(os.path.join(a.root, "scripts"))
+                            if f.endswith((".py", ".mjs"))]),
+            "skills": len([d for d in os.listdir(os.path.join(a.root, "skills"))
+                           if os.path.isdir(os.path.join(a.root, "skills", d))]) if os.path.isdir(
+                os.path.join(a.root, "skills")) else 0,
+        }
+        for key, n in real.items():
+            if counts.get(key) is not None and int(counts[key]) != n:
+                issues.append(("TG", "高", f"data/counts.json {key}={counts[key]}，实际 {n} 个"))
         badges = {
             "version": re.search(r"badge/version-v([0-9][0-9.]+)", rd),
             "scripts": re.search(r"badge/scripts-(\d+)", rd),
@@ -160,16 +174,11 @@ def main():
         }
         for key, got in badges.items():
             if not got:
-                issues.append(("TG", "中", f"README 缺 {key} 徽章"))
+                issues.append(("TG", "高", f"README 缺 {key} 徽章"))
                 continue
             want = latest if key == "version" else str(counts.get(key, ""))
             if want and got.group(1) != want:
-                issues.append(("TG", "中", f"README 徽章 {key}={got.group(1)} 与真值 {want} 不一致"))
-        real_scripts = (len([f for f in os.listdir(os.path.join(a.root, "scripts"))
-                             if f.endswith((".py", ".mjs"))]))
-        if counts.get("scripts") and int(counts["scripts"]) != real_scripts:
-            issues.append(("TG", "中",
-                           f"data/counts.json scripts={counts['scripts']}，实际 {real_scripts} 个"))
+                issues.append(("TG", "高", f"README 徽章 {key}={got.group(1)} 与真值 {want} 不一致"))
 
     # 数字单一真相：文档表格必须与 data/metrics.json 一致
     gm = os.path.join(a.root, "scripts", "gen_metrics.py")
