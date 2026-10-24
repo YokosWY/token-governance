@@ -761,7 +761,7 @@ def main():
     # 18. 首次上手（空 home / 空技能目录）：跑独立脚本，保证它没被改坏
     r = subprocess.run([PY, os.path.join(ROOT, "tests", "first_run.py")],
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       cwd=ROOT)
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, cwd=ROOT)
     check("首次上手 10 步无 traceback", r.returncode == 0, (r.stdout or "")[-160:])
 
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步

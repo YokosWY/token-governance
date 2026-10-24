@@ -21,6 +21,13 @@ SCRIPTS = os.path.join(ROOT, "scripts")
 PY = sys.executable
 VERBOSE = "--verbose" in sys.argv
 
+# 这个脚本自己也要固定 UTF-8：GitHub 的 Windows runner 控制台是 cp1252，
+# 直接 print 中文会 UnicodeEncodeError（本 job 第一次跑就是这么红的）。
+sys.path.insert(0, SCRIPTS)
+from tg_common import utf8_stdio  # noqa: E402
+
+utf8_stdio()
+
 failures = []
 
 
