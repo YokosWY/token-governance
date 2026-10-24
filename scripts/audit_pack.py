@@ -94,8 +94,14 @@ def check(label, root, issues):
                 here = os.path.dirname(f)
                 if not (os.path.exists(os.path.join(here, ref)) or os.path.exists(os.path.join(root, ref))):
                     issues.append((label, "中", f"{rel} 引用不存在的 {ref}"))
-        local_ids = [v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
-                                 os.environ.get("COMPUTERNAME")) if v and len(v) > 2]
+        # 本机标识泄露检查：CI 上跳过——runner 的用户名/主机名不是秘密，
+        # 而 docs 里出现「runner」这类通用词会直接误报成高危（2026-10-24 踩过）。
+        in_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+        generic = {"runner", "root", "admin", "user", "build", "ubuntu", "macos"}
+        local_ids = [] if in_ci else [
+            v for v in (os.environ.get("USERNAME"), os.environ.get("USER"),
+                        os.environ.get("COMPUTERNAME"))
+            if v and len(v) > 2 and v.lower() not in generic]
         if local_ids:
             # URL 里的 GitHub 账号是公开仓库地址，不算本机标识泄露；其余位置照查。
             body_no_url = re.sub(r"https?://[^\s)\"'>]+", "", s)

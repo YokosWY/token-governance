@@ -619,6 +619,14 @@ def main():
     check("坏配置：doctor 仍出体检单（first-run）且无 traceback",
           r.returncode == 0 and "first-run" in r.stdout, f"rc={r.returncode}")
 
+    # CI 上的本机标识检查必须跳过：runner 的用户名不是秘密，而 docs 里出现「runner」会误报成高危
+    r = subprocess.run([PY, os.path.join(SCRIPTS, "audit_pack.py")],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "CI": "true", "GITHUB_ACTIONS": "true", "USER": "runner"},
+                       cwd=ROOT)
+    check("CI 环境下 audit_pack 不把 runner 当泄露", r.returncode == 0,
+          (r.stdout + r.stderr)[-120:])
+
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)
