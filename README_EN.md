@@ -5,7 +5,7 @@ English | [简体中文](README.md)
 A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
 usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
 
-10 skills, 23 scripts, 1 plugin. Two required dependencies: Python 3.9+ and pyyaml;
+10 skills, 26 scripts, 1 plugin. Two required dependencies: Python 3.9+ and pyyaml;
 unzipping session logs also needs either the `zstd` binary or the `zstandard` module,
 and Node is only needed for the guard self-check. Run `python scripts/env_check.py` on a
 new machine. Runs on the configuration layer of DeepSeek Harness.
@@ -98,7 +98,7 @@ token-governance/
   skills/                      # 10 skills (9 idle by default)
   scripts/                     # 23 scripts: check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
-  tests/                       # 126 assertions + fixtures
+  tests/                       # 152 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate + Ubuntu/macOS compatibility matrix (also a gate)
 ```
@@ -111,7 +111,7 @@ token-governance/
 ```bash
 python scripts/env_check.py           # Python / pyyaml / decompressor / node / dsh_home
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 126 assertions, standard library (zstandard is used when the zstd binary is absent)
+python tests/run_tests.py             # 152 assertions, standard library (zstandard is used when the zstd binary is absent)
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 
