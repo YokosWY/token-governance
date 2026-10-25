@@ -14,14 +14,15 @@
 **用不上**，如果：调的是裸 API（厂商账单更准）、客户端不落逐 step 日志、或没权限改配置。
 本包不联网、不上传、不需要 token；脚本只读本地日志。唯一的写操作是 `install_guard.py` 往 DSH 装循环守卫、`patch_snapshot.py` 存快照。
 
-## 1. 装完先跑四步
+## 1. 装完先跑五步
 
 | 步 | 命令 | 正常长什么样 | 不对怎么办 |
 |---|---|---|---|
 | 1 依赖 | `python scripts/env_check.py` | 必需项全绿，退出码 0 | 按提示装 `pyyaml` / `zstandard`（或系统 `zstd`） |
 | 2 数据目录 | `python scripts/detect_home.py` | 打印一行可粘贴的 `dsh_home:` 片段 | 多套 DSH 时逐个试，选 `sessions/` 里日志最多的那个 |
 | 3 配置 | `cp config.example.yaml config.yaml`，填 `dsh_home` | 文件里有 `dsh_home` / `memory_root` / `skills_dir` | 别猜 `~/.dsh`：桌面版 home 由安装位置决定，可能在任意盘 |
-| 4 预检 | `python scripts/preflight.py --config config.yaml` | 「放行（退出码 0）」 | `1` = 待确认，逐条看冲突项；`2` = 拒绝，先修再继续 |
+| 4 对话夹 | `python scripts/setup.py` | 问一句「放在哪」，回车用默认 `~/Documents/tg-memory`，建好并写回 `memory_root` | 无人值守给 `--memory-root <路径>` 或 `--yes`；不配也不会静默落到 `~/tg-memory` |
+| 5 预检 | `python scripts/preflight.py --config config.yaml` | 「放行（退出码 0）」 | `1` = 待确认，逐条看冲突项；`2` = 拒绝，先修再继续 |
 
 > PowerShell 不能照抄 bash：`$DSH_HOME` 在 PowerShell 里展开成空串，`cp -r ... "$DSH_HOME/skills/"` 会写进盘根。
 > 用 `$dshHome = "E:/apps/dsh"` 显式赋值，复制用 `Copy-Item -Recurse`。

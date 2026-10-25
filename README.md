@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.0.1-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.0.2-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-26-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-152-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-27-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-155-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、26 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
+> 10 个技能、27 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
 > 必需依赖三项：Python 3.9+、pyyaml、解压器（`pip install zstandard` 或 `zstd` 命令，二选一）；Node 18+ 仅用于守卫自检。
 > 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
@@ -100,11 +100,17 @@ python scripts/env_check.py --json     # 给安装脚本或 CI 读
 ```bash
 # 1) 先自动找 DSH 数据目录。别猜 ~/.dsh：桌面版 home 由安装位置决定，可以是任意盘任意目录
 python scripts/detect_home.py                     # 输出可直接粘贴的 dsh_home 片段
-cp config.example.yaml config.yaml                # 2) 把上一步那行填进 dsh_home（memory_root / skills_dir 同看）
-python scripts/env_check.py                       # 3) 依赖齐不齐（缺必需项时退出码 1）
-cp -r skills/tg-* "$DSH_HOME/skills/"             # 4) 技能入目录，重启 DSH 后生效
-python scripts/preflight.py --config config.yaml  # 5) 只读预检：放行 0 / 待确认 1 / 拒绝 2
+cp config.example.yaml config.yaml                # 2) 把上一步那行填进 dsh_home（skills_dir 同看）
+python scripts/setup.py                           # 3) 问对话夹母文件夹放哪并建好（默认 ~/Documents/tg-memory）
+python scripts/env_check.py                       # 4) 依赖齐不齐（缺必需项时退出码 1）
+cp -r skills/tg-* "$DSH_HOME/skills/"             # 5) 技能入目录，重启 DSH 后生效
+python scripts/preflight.py --config config.yaml  # 6) 只读预检：放行 0 / 待确认 1 / 拒绝 2
 ```
+
+> 第 3 步会问一次「对话夹放哪」，回车即用默认的 `~/Documents/tg-memory`；回答后写进
+> `config.yaml` 的 `memory_root`，之后所有脚本共用。无人值守时给
+> `python scripts/setup.py --memory-root <路径>` 或 `--yes`（用默认）。
+> 不配也不会再静默落到 `~/tg-memory`：脚本会报「未配置」并给出这条命令。
 
 > `python` 与 `python3`：Windows 上是 `python`，macOS / 多数 Linux 发行版只有 `python3`（`python` 可能不存在，
 > 或是 Windows 商店的占位别名）。下面所有 `python scripts/...` 在那些机器上换成 `python3 scripts/...` 即可。
@@ -194,7 +200,7 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 26 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
+  scripts/                     # 27 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   tests/                       # 152 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
@@ -217,7 +223,7 @@ python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard` / 3.14 内建 `compression.zstd`）、账本 v2 派生与幂等、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
+都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard` / 3.14 内建 `compression.zstd`）、账本 v2 派生与幂等、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、15 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
 `.github/workflows/ci.yml` 有三个门禁：Windows 验收 job、Ubuntu/macOS × Python 3.10/3.12 兼容矩阵（2026-10-24 首轮全绿后转正）、首次上手 job（空 home 跑 10 步）；另有 Linux 全量测试探测，不阻塞。
 

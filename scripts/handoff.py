@@ -16,8 +16,8 @@
 """
 import argparse, datetime, json, os, re, shutil, sys
 
-from tg_common import (config_base, decompress_bytes, load_config, resolve_dsh_home,
-                       sessions_root, utf8_stdio)
+from tg_common import (MemoryRootUnset, config_base, decompress_bytes, ensure_memory_root,
+                       expand, load_config, resolve_dsh_home, sessions_root, utf8_stdio)
 
 utf8_stdio()
 
@@ -462,7 +462,15 @@ def main():
     today = datetime.date.today()
     task = "" if a.no_task else (clean_task(a.task) if a.task else lookup_task(task_file, sid))
     name = task or f"{today:%Y%m%d}-{a.slug}"
-    mem = a.memory_root or cfg.get("memory_root") or os.path.join(os.path.expanduser("~"), "tg-memory")
+    if a.memory_root:
+        mem = expand(a.memory_root)
+    elif a.print_only:
+        mem = "."            # 只打印不落盘：没有母文件夹也照样能出卡（预览不该有副作用）
+    else:
+        try:
+            mem, _info = ensure_memory_root(cfg, base, config_path=a.config)
+        except MemoryRootUnset as e:
+            sys.exit(str(e))
     folder = os.path.join(mem, a.workspace, name)
 
     # 有任务夹：先认索引（同一会话重跑就写回同一张卡），否则夹里还没卡 → 本会话当主卡，

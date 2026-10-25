@@ -9,8 +9,10 @@ dsh_home: "~/.dsh"
 #   - "~/.dsh"
 #   - "~/dsh-next"
 
-# 会话记忆根（对话夹）
-memory_root: "~/tg-memory"
+# 会话记忆根（对话夹母文件夹）
+# 留空 = 首次运行时问你要放哪（setup.py / new_session.py / handoff.py 都会问），默认 ~/Documents/tg-memory
+# 填了就按填的建；**不再兜底 ~/tg-memory**（那条静默降级会把「忘配」伪装成「没配」）
+memory_root: ""
 
 # 技能目录（放 SKILL.md 的地方）
 skills_dir: "~/.dsh/skills"

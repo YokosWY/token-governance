@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """新建对话夹：python new_session.py <workspace> <session-id> [标题] [--root DIR] [--config config.yaml]
 
-不给 --root 时先读 config.yaml 的 memory_root，读不到再用 ~/tg-memory。
+不给 --root 时先读 config.yaml 的 memory_root，再读 $TG_MEMORY_ROOT；都没配就问宿主放在哪
+（非交互终端则报错并给命令）——不再静默落到 ~/tg-memory。
 """
-import argparse, datetime, os, shutil, sys
+import argparse, datetime, os, sys
 
-from tg_common import expand, load_config, utf8_stdio
+from tg_common import (MemoryRootUnset, ensure_memory_root, expand, load_config,
+                       utf8_stdio)
 
 utf8_stdio()
 
-
-def memory_root(config_path):
-    """config 的 memory_root；配置写坏直接报错，绝不静默落回 ~/tg-memory 乱建目录。"""
-    cfg, base = load_config(config_path)
-    v = cfg.get("memory_root")
-    if v:
-        return expand(v, base)
-    return os.path.expanduser("~/tg-memory")
 
 FILES = {
     "00-card.md": "# 会话卡 · {title}\n\n- 会话：{sid}\n- 工作区：{ws}\n- 开始：{date}\n- 状态：进行中\n\n## 目标\n- \n\n## 当前进度\n- [ ]\n\n## 下一步\n- [ ]\n\n## 关键路径\n- 产出：\n- 日志：30-logs/\n",
@@ -34,7 +28,13 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     a = ap.parse_args()
     title = a.title or a.session_id
-    root = a.root or memory_root(a.config)
+    root = a.root
+    if not root:
+        cfg, base = load_config(a.config)
+        try:
+            root, _info = ensure_memory_root(cfg, base, config_path=a.config)
+        except MemoryRootUnset as e:
+            sys.exit(str(e))
     root_x = os.path.expanduser(os.path.expandvars(str(root)))
     if root_x.startswith("~"):
         # expanduser 展不开（HOME/USERPROFILE 都没设）时它会原样返回 ~，继续跑会在 cwd 建字面 ~ 目录

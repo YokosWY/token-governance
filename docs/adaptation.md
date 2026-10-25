@@ -137,6 +137,7 @@
 | 已有同名技能 | 技能目录已存在 `tg-*` | 问：覆盖/改名/跳过 |
 | 已有别的 router | 其他 router 类技能或路由脚本 | 问：并存/接管/替换 |
 | 记忆根非空 | `memory_root` 有内容 | 问：合并/另起目录 |
+| 记忆根未配置 | `memory_root` 为空且没设 `$TG_MEMORY_ROOT` | 跑 `python scripts/setup.py` 选目录（默认 `~/Documents/tg-memory`）；不再静默落到 `~/tg-memory` |
 | 配置已存在 | `config.yaml` 内容不同 | 问：覆盖/保留/备份 |
 | 补丁条目冲突 | 目标 id 已存在 | 问：合并/交给你改 |
 | GUI 目标含凭据 | 文件名含 credential/key | 问：继续/换目标 |
@@ -168,7 +169,7 @@
 | 项 | 默认 | 说明 |
 |---|---|---|
 | `dsh_home` | `~/.dsh` | 发行版可能不同（如 `~/dsh-next`） |
-| `memory_root` | `~/tg-memory` | 会话记忆放哪 |
+| `memory_root` | 空（首次问）→ `~/Documents/tg-memory` | 对话夹母文件夹放哪；留空则 `setup.py` 会问宿主 |
 | `skills_dir` | `~/.dsh/skills` | 技能目录 |
 | `budget` | null | 预算告警阈值 |
 | 价格表 | flash 价 | 不同模型不同价 |

@@ -5,7 +5,7 @@
 """
 import argparse, json, os, shutil, sys
 
-from tg_common import add_common_args, config_base, resolve_dsh_home, utf8_stdio
+from tg_common import add_common_args, config_base, memory_root_from, resolve_dsh_home, utf8_stdio
 
 # 输出含中文与 JSON：Windows 控制台默认 GBK，固定 UTF-8，否则 --json 会被上游按 UTF-8 解成乱码。
 utf8_stdio()
@@ -64,7 +64,7 @@ def main():
     cfg = load_yaml(a.config)
     base = config_base(a.config)
     skills_dir = expand(cfg.get("skills_dir") or "~/.dsh/skills", base)
-    memory_root = expand(cfg.get("memory_root") or "~/tg-memory", base)
+    memory_root = memory_root_from(cfg, base)
     dsh_home = resolve_dsh_home(a.dsh_home, cfg=cfg, base=base)
 
     rows, conflicts = [], 0
@@ -85,8 +85,11 @@ def main():
         if os.path.exists(os.path.join(skills_dir, cand)):
             add("已有路由", os.path.join(skills_dir, cand), "问：并存 / 接管 / 替换")
             break
-    # 3. 记忆根
-    if os.path.isdir(memory_root) and os.listdir(memory_root):
+    # 3. 记忆根（未配置不再当成 ~/tg-memory，直接指路 setup.py）
+    if not memory_root:
+        rows.append(("记忆根未配置", "config.yaml 没有 memory_root，$TG_MEMORY_ROOT 也没设",
+                     "跑 python scripts/setup.py 选一个目录（默认 ~/Documents/tg-memory）"))
+    elif os.path.isdir(memory_root) and os.listdir(memory_root):
         add("记忆根非空", f"{memory_root}（{len(os.listdir(memory_root))} 项）",
             "问：合并 / 另起目录")
 

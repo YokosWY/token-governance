@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 DEFAULT_CONFIG = "config.yaml"
 
@@ -279,6 +280,180 @@ def resolve_dsh_home(arg="", cfg=None, base=None, env=None):
 
 def sessions_root(home):
     return os.path.join(expand(home), "sessions")
+
+
+# ---------------------------------------------------------------- 对话夹母文件夹
+# 口径（本文件是唯一实现）：config.yaml 的 memory_root  >  $TG_MEMORY_ROOT  >  没有就问
+# 不再兜底 ~/tg-memory：那条静默降级会把「路径配错 / 忘配」伪装成「用户没配置」，
+# 2026-10-25 就是它把交接卡写进了 C:\Users\<user>\tg-memory（插件 spawn 没传 --config）。
+
+DEFAULT_MEMORY_ROOT_PARTS = ("Documents", "tg-memory")
+
+
+class MemoryRootUnset(Exception):
+    """没有 memory_root，且当前不是可交互终端。调用方应转成「说人话 + 非零退出码」。"""
+
+
+def default_memory_root():
+    """新装机器的推荐路径 ~/Documents/tg-memory（跨平台；不往家目录根丢东西）。"""
+    return os.path.join(os.path.expanduser("~"), *DEFAULT_MEMORY_ROOT_PARTS)
+
+
+def memory_root_from(cfg=None, base=None, env=None):
+    """config 的 memory_root > $TG_MEMORY_ROOT；都没有返回 ""（空串＝未配置，由调用方决定问还是报错）。"""
+    env = os.environ if env is None else env
+    if isinstance(cfg, dict):
+        v = cfg.get("memory_root")
+        if isinstance(v, str) and v.strip():
+            return expand(v, base)
+    v = (env or {}).get("TG_MEMORY_ROOT")
+    if isinstance(v, str) and v.strip():
+        return expand(v)
+    return ""
+
+
+def is_interactive():
+    """能不能问用户：stdin 与 stdout 都是终端才算（管道 / 插件 spawn / CI 一律不阻塞）。"""
+    try:
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except Exception:
+        return False
+
+
+def _write_text_atomic(path, text):
+    """先写临时文件再 os.replace：崩溃/断电时不会留下半截配置。"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+MEMORY_README = """# 对话夹（会话临时记忆库）
+
+母文件夹由 `python scripts/setup.py` 创建；长期结论仍回写 `memory/` 主库。
+
+```
+<workspace>/<任务名>/
+  00-card.md       会话卡：目标 / 进度 / 下一步（≤40 行，覆盖写）
+  01-<sid8>.md     同任务的其他会话卡（不互相覆盖）
+  99-cards.json    本夹索引
+  30-logs/         原始输出（正文只留路径）
+```
+
+- 当前位置：`{root}`
+- 换位置：`python scripts/setup.py --memory-root "<新路径>"`（会改 `config.yaml` 的 `memory_root`）
+- 以前没有配置时会静默落到 `~/tg-memory`，这个兜底已删除。
+"""
+
+MEMORY_TEMPLATE_CARD = """# 会话卡 · <标题>
+
+- 会话：<sid>
+- 工作区：<workspace>
+- 状态：进行中
+
+## 目标
+
+## 下一步
+"""
+
+
+def ensure_memory_layout(root):
+    """建母文件夹（幂等）：根 + README.md + _template/00-card.md。返回是否新建了根目录。"""
+    root = expand(root)
+    created = not os.path.isdir(root)
+    os.makedirs(root, exist_ok=True)
+    os.makedirs(os.path.join(root, "_template"), exist_ok=True)
+    readme = os.path.join(root, "README.md")
+    if not os.path.isfile(readme):
+        _write_text_atomic(readme, MEMORY_README.format(root=root.replace("\\", "/")))
+    tpl = os.path.join(root, "_template", "00-card.md")
+    if not os.path.isfile(tpl):
+        _write_text_atomic(tpl, MEMORY_TEMPLATE_CARD)
+    return created
+
+
+def write_memory_root(config_path=DEFAULT_CONFIG, value="", example="config.example.yaml"):
+    """把 memory_root 写回 config.yaml：先备份，按行替换（保留其它项与注释），原子落盘。
+
+    返回 (config_path, 备份路径或 "")。config.yaml 不存在时先按 example 生成。
+    """
+    path = config_path or DEFAULT_CONFIG
+    bak = ""
+    if not os.path.isfile(path):
+        base_dir = config_base(path)
+        ex = example if os.path.isabs(example) else os.path.join(base_dir, example)
+        if os.path.isfile(ex):
+            shutil.copyfile(ex, path)
+        else:
+            os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+            _write_text_atomic(path, "# Token-Governance 配置（setup.py 生成）\n"
+                                     "memory_root: \"%s\"\n" % str(value).replace("\\", "/"))
+            return path, bak
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    newline = 'memory_root: "%s"' % str(value).replace("\\", "/")
+    hit = False
+    for i, s in enumerate(lines):
+        if s.lstrip().startswith("memory_root:") and not s.lstrip().startswith("#"):
+            lines[i] = newline
+            hit = True
+            break
+    if not hit:
+        lines.append(newline)
+    bak = path + ".bak-memory-root-" + time.strftime("%Y%m%d-%H%M%S")
+    shutil.copyfile(path, bak)
+    _write_text_atomic(path, "\n".join(lines).rstrip("\n") + "\n")
+    return path, bak
+
+
+def ensure_memory_root(cfg=None, base=None, config_path=None, env=None, ask=None, persist=True):
+    """取对话夹母文件夹并保证目录存在。
+
+    已配置 / 已设 $TG_MEMORY_ROOT  → 直接用（缺目录就建，第一次会自动创建）
+    都没配 → 可交互就问宿主放哪并写回 config.yaml；不可交互抛 MemoryRootUnset。
+
+    返回 (root, info)；info = {"source": "config"|"env"|"prompt", "created": bool}
+    """
+    env = os.environ if env is None else env
+    root = memory_root_from(cfg, base, env)
+    if root:
+        src = "config" if (isinstance(cfg, dict) and str(cfg.get("memory_root") or "").strip()) else "env"
+        return root, {"source": src, "created": ensure_memory_layout(root)}
+    if ask is None:
+        ask = is_interactive()
+    if not ask:
+        raise MemoryRootUnset(
+            "没有配置对话夹母文件夹（memory_root），当前也不能问你放在哪（非交互终端）。\n"
+            f"  推荐：{default_memory_root()}\n"
+            "  三选一：\n"
+            '    1) python scripts/setup.py --memory-root "<路径>"\n'
+            "    2) 设置环境变量 TG_MEMORY_ROOT=<路径>\n"
+            "    3) 在终端里直接跑 python scripts/setup.py（会问）\n"
+            "  说明：以前没配置会静默落到 ~/tg-memory，这个兜底已删除。")
+    dft = default_memory_root()
+    print(f"对话夹母文件夹（会话临时记忆库）将放在：{dft}")
+    print("  直接回车＝用这个；也可输入别的路径（~ 会展开，相对路径按 config 所在目录）。")
+    while True:
+        try:
+            s = input("放在哪？ ").strip()
+        except EOFError:
+            s = ""
+        p = expand(s or dft, base)
+        if os.path.exists(p) and not os.path.isdir(p):
+            print(f"  {p} 是文件不是目录，换一个。")
+            continue
+        try:
+            created = ensure_memory_layout(p)
+        except OSError as e:
+            print(f"  建不了 {p}（{e.strerror or e}），换一个。")
+            continue
+        if persist and config_path:
+            try:
+                write_memory_root(config_path, p)
+                print(f"  已写入 {config_path}")
+            except OSError as e:
+                print(f"  [warn] 写不进 {config_path}：{e}（本次仍用 {p}）", file=sys.stderr)
+        return p, {"source": "prompt", "created": created}
 
 
 def ledger_path(home):

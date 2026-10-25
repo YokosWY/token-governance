@@ -496,7 +496,7 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
-                      "install_guard.py", "handoff.py")
+                      "install_guard.py", "handoff.py", "setup.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()

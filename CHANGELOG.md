@@ -3,6 +3,20 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.0.2 — 2026-10-25（对话夹母文件夹：装的时候问宿主放哪；删掉 `~/tg-memory` 静默兜底）
+
+- 新增 `scripts/setup.py`（安装向导）：问一句「对话夹放哪」，回车用默认 `~/Documents/tg-memory`；
+  建 `<root>/README.md` + `<root>/_template/00-card.md`，并把答案写回 `config.yaml` 的 `memory_root`（先备份、原子落盘、保留其它项与注释）。
+  无人值守：`--memory-root <路径>` / `--yes`（已配过就沿用，不覆盖）；非交互且未配置 → 退出码 **2** 并给命令；`--show` 只看现状。
+- 删静默兜底：`memory_root` 未配置时，`handoff.py` / `new_session.py` 不再落到 `~/tg-memory`
+  （2026-10-25 交接卡被写进 `C:\Users\<user>\tg-memory` 就是这条降级路径）。统一走 `tg_common.ensure_memory_root()`：
+  `config.yaml` > `$TG_MEMORY_ROOT` > 可交互就问 > 否则 `MemoryRootUnset` 并给三条出路。
+- `handoff.py --print-only` 不受影响（预览不落盘，也不要求母文件夹已配置）。
+- `preflight.py`：`memory_root` 未配置时单列一行「记忆根未配置 + 跑 setup.py」，不再把它当成 `~/tg-memory` 去检查。
+- `config.example.yaml`：`memory_root` 默认留空，并注明「留空＝首次运行时询问」。
+- 文档：README 安装段加第 3 步 `python scripts/setup.py`；`docs/getting-started.md` 四步 → 五步；`docs/adaptation.md` 两条按机器改的项同步。
+- 计数：脚本 26 → **27**、断言 152 → **155**（坏配置注入脚本清单加 `setup.py`，+3 条）。
+
 ## v1.0.1 — 2026-10-25（新增上手手册；修 3 处过期描述）
 
 - 新文档 `docs/getting-started.md`：面向第一次用的人——适用判断 → 装完四步（`env_check` / `detect_home` / `config` / `preflight`）→ 三条日常命令（`doctor` / `cost_summary` / `turn_cost`）→ 归因四件套 → 技能路由 → 改配置与回滚 → 常见问题 → 一页速查。README「文档」段置顶链接。

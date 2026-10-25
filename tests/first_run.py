@@ -95,6 +95,25 @@ def main():
     # 8) 建对话夹：真实写入路径（唯一会写盘的步骤）
     run("new_session（建对话夹）", [os.path.join(SCRIPTS, "new_session.py"), "demo", "s1",
                                 "--root", memory, "--config", cfg])
+    # 8b) 安装向导：配好的 memory_root 直接用，并把母文件夹结构建出来
+    run("setup --yes（建母文件夹）", [os.path.join(SCRIPTS, "setup.py"), "--config", cfg, "--yes"])
+    for rel in ("README.md", os.path.join("_template", "00-card.md")):
+        if not os.path.isfile(os.path.join(memory, rel)):
+            failures.append(("setup 未建出 " + rel, ["缺文件"], []))
+            print("FAIL setup 未建出 " + rel)
+    # 8c) 没配 memory_root + 非交互：必须退出码 2，且不许在任何默认位置建目录
+    cfg_empty = os.path.join(tmp, "config-no-memory.yaml")
+    with open(cfg_empty, "w", encoding="utf-8") as f:
+        f.write(f'dsh_home: "{home.replace(os.sep, "/")}"\nmemory_root: ""\n')
+    fallback = os.path.join(os.path.expanduser("~"), "tg-memory", "__first_run_probe__")
+    r2 = run("setup（未配置 + 非交互：预期 rc=2）",
+             [os.path.join(SCRIPTS, "setup.py"), "--config", cfg_empty], expect=(2,))
+    r = run("setup --memory-root（非交互指定路径）",
+            [os.path.join(SCRIPTS, "setup.py"), "--config", cfg_empty,
+             "--memory-root", os.path.join(tmp, "probe-not-used")], expect=(0,))
+    if os.path.isdir(fallback):
+        failures.append(("未配置的 setup 建出了 ~/tg-memory", [fallback], []))
+        print("FAIL 未配置的 setup 建出了 ~/tg-memory")
     # 9) 校验示例补丁：config.example.yaml 是 mapping，check_yaml 应拒绝（可读，不 traceback）
     run("check_yaml（示例配置不是补丁列表：预期 rc=1）",
         [os.path.join(SCRIPTS, "check_yaml.py"), os.path.join(ROOT, "config.example.yaml")],
