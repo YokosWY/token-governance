@@ -836,10 +836,14 @@ def main():
               "Traceback" not in output and "解压需要二选一" not in output
               and "ZstdDecompressor" not in output, output[:120])
     else:
+        # 断言的是「给一句话、不抛 traceback」，不是某一层的具体措辞：
+        # 缺解压器时 tg_common 给的是「解压需要二选一…」，env_check 那条才提 ZstdDecompressor。
+        # 旧写法硬要 baseline 输出里出现 ZstdDecompressor，在 py<3.14 上必然误报（2026-10-25 CI 实测）。
+        out = r.stdout + r.stderr
         check("假 zstandard 模块解压时给一句话而不是 AttributeError",
-              r.returncode != 0 and "ZstdDecompressor" in (r.stdout + r.stderr)
-              and "Traceback" not in (r.stdout + r.stderr),
-              (r.stdout + r.stderr)[:80])
+              r.returncode != 0 and "Traceback" not in out and "AttributeError" not in out
+              and ("解压需要二选一" in out or "ZstdDecompressor" in out),
+              out[:80])
 
     # 徽章漂移必须阻断（「中」不阻断 CI 等于没门禁）
     badge_root = os.path.join(tmp, "badgeproj")
