@@ -25,6 +25,10 @@ def read(p):
 SKIP_DIRS = ("_history", "_archive", "node_modules", ".git", "__pycache__")
 LOCAL_IDS = []  # 由 main() 按 --local-id / 环境变量填充
 
+# .gitignore 里声明「不发布」的本机文件：它们本来就该含本机路径，扫了只会淹没有效告警。
+# 目录前缀 / 文件前缀匹配（config.yaml、data/ledger.json*、_local/*）。
+LOCAL_ONLY = ("config.yaml", "data/ledger.json", "_local/", "_forge/", "tg-baseline.json")
+
 
 def _is_backup(name):
     """备份文件：xxx.bak / xxx.bak-20261022-194451 / xxx.bak_key（不误伤 bakery.py）。"""
@@ -74,10 +78,16 @@ def check(label, root, issues):
                 issues.append((label, "中", f"description 超 200 字符（{len(d)}）: {rel}"))
 
     for f in files:
-        if not f.endswith((".md", ".py", ".yaml", ".yml")):
+        # 扫描面必须覆盖真正会带路径的文件类型：.mjs/.js 里同样会出现本机绝对路径，
+        # 原先只扫 .md/.py/.yaml/.yml，`scripts/verify_guard.mjs` 的 `D:/AI/...` 就是这样逃过门禁的。
+        if not f.endswith((".md", ".py", ".yaml", ".yml", ".mjs", ".js",
+                           ".cmd", ".sh", ".ps1", ".json")):
             continue
         base = os.path.basename(f)
         rel = os.path.relpath(f, root)
+        rel_c = rel.replace(os.sep, "/")
+        if any(rel_c == p or rel_c.startswith(p) for p in LOCAL_ONLY):
+            continue  # .gitignore 里声明不发布的本机文件：本来就含本机路径
         if base == "audit_pack.py":
             continue  # 检查器自身包含关键词表，跳过
         s = read(f)
@@ -103,8 +113,12 @@ def check(label, root, issues):
                 re.IGNORECASE)
             if pat.search(s):
                 issues.append((label, "高", f"路径里含本机用户名/主机名: {rel}"))
+        # 绝对路径：正反斜杠都要认。旧写法 `D:\\?AI` 只匹配反斜杠形式，
+        # 于是 `D:/AI/DSH-NEXT/local-plugins/...`（正斜杠，JS 里最常见）永远抓不到。
+        # 只盯本机专有目录名，不抓通用盘符路径（`C:/Users/...`、`C:/dsh-next` 是合理示例）。
         if (label == "TG" and base != "CHANGELOG.md"
-                and re.search(r"D:\\?AI", s) and "portable-vs-local" not in f):
+                and re.search(r"[A-Za-z]:[\\/]+(?:AI|DSH-NEXT|tg-memory)\b", s, re.I)
+                and "portable-vs-local" not in f):
             issues.append((label, "中", f"TG 出现绝对路径: {rel}"))
 
     # README 技能清单 vs 实际目录

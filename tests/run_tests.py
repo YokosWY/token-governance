@@ -4,7 +4,7 @@
 用法：python tests/run_tests.py
 覆盖：解压回退、计价、日志格式拒绝、换参重试口径、预检漂移、首日基线、数字单源。
 """
-import json, os, subprocess, sys, tempfile
+import json, os, re, subprocess, sys, tempfile
 
 # Windows 默认控制台是 GBK；测试会打印带替换字符的 detail，不固定编码会以
 # UnicodeEncodeError 崩掉（退出码 1，看起来像测试失败，其实是打印失败）。
@@ -36,18 +36,32 @@ def run(script, *args):
 
 
 def compress(src, dst):
+    """造 .zstd 夹具：与 tg_common 的通道顺序一致（命令 → 内建 → 模块）。
+
+    测试自身也要能从「只有 3.14 内建压缩」的机器上跑起来，否则升级 Python 后
+    夹具造不出来、大批用例静默 SKIP，看起来还是绿的。
+    """
     try:
         r = subprocess.run(["zstd", "-q", "-f", src, "-o", dst], capture_output=True)
         if r.returncode == 0 and os.path.isfile(dst):
             return True
     except FileNotFoundError:
         pass
+    with open(src, "rb") as f:
+        data = f.read()
+    try:
+        from compression import zstd as czstd
+        with open(dst, "wb") as f:
+            f.write(czstd.compress(data))
+        return True
+    except ImportError:
+        pass
+    except Exception:
+        return False
     try:
         import zstandard as zstd
     except ImportError:
         return False
-    with open(src, "rb") as f:
-        data = f.read()
     with open(dst, "wb") as f:
         f.write(zstd.ZstdCompressor().compress(data))
     return True
@@ -77,6 +91,7 @@ def write_cfg(path, home):
 
 
 def main():
+    from datetime import datetime, timezone, timedelta  # 账本用例要构造确定的毫秒时间戳
     tmp = tempfile.mkdtemp(prefix="tg-test-")
     prices = os.path.join(tmp, "prices.yaml")
     with open(prices, "w", encoding="utf-8") as f:
@@ -84,6 +99,12 @@ def main():
 
     home = os.path.join(tmp, "home")
     os.makedirs(os.path.join(home, "skills"), exist_ok=True)
+    # Python ≥3.14 自带 compression.zstd：这时「解压器缺失」类用例的前提不成立，必须按版本分流
+    try:
+        from compression import zstd as _builtin_zstd  # noqa: F401
+        has_builtin_zstd = True
+    except ImportError:
+        has_builtin_zstd = False
     ok = put_session(home, "session-retry", "retry_session.jsonl", tmp)
     if not ok:
         # 没解压器就没法造夹具：这是环境缺件，不是失败（CI 里 continue-on-error 的 job 不该因此判红）
@@ -462,7 +483,7 @@ def main():
     # 并把清单与 scripts/ 的实际 argparse 选项对账（漏一个就红，避免只测 4 个的假绿）。
     bad_cfg = os.path.join(tmp, "bad.yaml")
     with open(bad_cfg, "w", encoding="utf-8") as f:
-        f.write('dsh_home: "C:\\dsh-next"\n')  # 双引号里的反斜杠 = YAML 转义，必坏
+        f.write('dsh_home: "E:\\apps\\dsh"\n')  # 双引号里的反斜杠 = YAML 转义，必坏
     list_cfg = os.path.join(tmp, "list.yaml")
     with open(list_cfg, "w", encoding="utf-8") as f:
         f.write("- a\n- b\n")                 # 顶层不是映射
@@ -475,7 +496,7 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
-                      "install_guard.py")
+                      "install_guard.py", "handoff.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
@@ -487,7 +508,8 @@ def main():
           f"漏: {sorted(declared - set(config_scripts) - tolerant_scripts)}")
 
     extra = {"new_session.py": ("__probe__", "sid1"),
-             "install_guard.py": ("--status",)}
+             "install_guard.py": ("--status",),
+             "handoff.py": ("--session", "ab12cd34", "--slug", "t")}
     for script in config_scripts:
         args = list(extra.get(script, ())) + ["--config", bad_cfg]
         r = run(script, *args)
@@ -572,9 +594,16 @@ def main():
     check("解压器完全缺失时没有脚本抛 traceback", not both_missing, ", ".join(both_missing))
     r = run_env("baseline.py", ["--config", e2e_cfg], extra_env={"PYTHONPATH": dep_nozstd},
                 path_override=bare_path)
-    check("解压器完全缺失时 baseline 给「二选一」提示",
-          "解压需要二选一" in (r.stdout + r.stderr) and "zstandard" in (r.stdout + r.stderr),
-          (r.stdout + r.stderr)[:80])
+    if has_builtin_zstd:
+        # 3.14 起有内建解压器：CLI 与 zstandard 都没有也能跑，「二选一」提示不该出现
+        check("解压器 CLI/模块都缺时 3.14 内建解压兜底",
+              "解压需要二选一" not in (r.stdout + r.stderr)
+              and "Traceback" not in (r.stdout + r.stderr),
+              (r.stdout + r.stderr)[:80])
+    else:
+        check("解压器完全缺失时 baseline 给「二选一」提示",
+              "解压需要二选一" in (r.stdout + r.stderr) and "zstandard" in (r.stdout + r.stderr),
+              (r.stdout + r.stderr)[:80])
 
     # 环境自检：必需项缺失必须非零退出，且 JSON 里能点名缺什么；rc 与 JSON 的 ok 必须一致
     r = run_env("env_check.py", ["--json"])
@@ -598,9 +627,67 @@ def main():
         ec2 = json.loads(r.stdout)
     except json.JSONDecodeError:
         ec2 = {}
-    check("env_check 缺解压器时非零且点名",
-          r.returncode == 1 and "unzip" in (ec2.get("missing_required") or []),
-          f"rc={r.returncode} missing={ec2.get('missing_required')}")
+    if has_builtin_zstd:
+        # 3.14 起内建 compression.zstd 就是一条可用通道：自检必须与 tg_common 同口径判「齐备」。
+        # 旧断言写死「缺解压器必须报缺」——在 3.14 上等于把 bug 当规格：用户被指去装
+        # zstandard，而所有脚本本来就能解压。口径不一致比缺件更难排查。
+        check("env_check 与 tg_common 解压口径一致（有内建时判齐备）",
+              r.returncode == 0 and "unzip" not in (ec2.get("missing_required") or []),
+              f"rc={r.returncode} missing={ec2.get('missing_required')}")
+    else:
+        check("env_check 缺解压器时非零且点名",
+              r.returncode == 1 and "unzip" in (ec2.get("missing_required") or []),
+              f"rc={r.returncode} missing={ec2.get('missing_required')}")
+
+    # 解压实现只能有一份：副本会漂移成「别的脚本能跑、这个脚本说解压器缺失」
+    rp_src = open(os.path.join(SCRIPTS, "retry_patterns.py"), encoding="utf-8").read()
+    check("retry_patterns 复用 tg_common 的解压实现（不再自带副本）",
+          "decompress_bytes" in rp_src and "def decompress(" not in rp_src, "仍有本地解压实现")
+
+    # 守卫自检里的上游路径不许写死本机：写死后换机器就静默跳过一致性检查。
+    # 只查「盘符 + 本机特征目录」，不查所有盘符字面量——正则里的 `:\s` 会被误判成 `e:\`。
+    vg_src = open(os.path.join(SCRIPTS, "verify_guard.mjs"), encoding="utf-8").read()
+    vg_bad = re.findall(r"[A-Za-z]:[\\/](?:AI|DSH-NEXT|local-plugins|Users)\b", vg_src, re.I)
+    check("verify_guard 不含写死的本机路径（上游靠探测 + TG_UPSTREAM）",
+          not vg_bad and "TG_UPSTREAM" in vg_src and "findUpstream" in vg_src,
+          f"命中 {vg_bad[:2]}")
+
+    # detect_home：home 由安装位置决定，靠桌面版指针文件也要找得到（换机器最常卡在这）
+    fake_user = os.path.join(tmp, "fake-user")
+    fake_app = os.path.join(fake_user, "AppData", "Roaming", "DSH Demo")
+    real_home = os.path.join(tmp, "real-dsh-home")
+    os.makedirs(os.path.join(fake_app, "home"), exist_ok=True)
+    os.makedirs(os.path.join(real_home, "sessions", "grp", "s1"), exist_ok=True)
+    os.makedirs(os.path.join(real_home, "storages"), exist_ok=True)
+    with open(os.path.join(real_home, "sessions", "grp", "s1", "session.v4.jsonl.zstd"), "wb") as f:
+        f.write(b"")
+    with open(os.path.join(fake_app, "home", "desktop-next-location.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"home": real_home}, f)
+    dh_env = {"USERPROFILE": fake_user, "HOME": fake_user, "DSH_HOME": "",
+              "APPDATA": os.path.join(fake_user, "AppData", "Roaming"),
+              "LOCALAPPDATA": os.path.join(fake_user, "AppData", "Local")}
+    r = run_env("detect_home.py", ["--json", "--no-scan",
+                                   "--config", os.path.join(tmp, "no-such.yaml")],
+                extra_env=dh_env)
+    try:
+        dh = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        dh = {}
+    check("detect_home 靠指针文件找到 home（无 config）",
+          os.path.normcase(dh.get("recommended") or "") == os.path.normcase(real_home),
+          f"rc={r.returncode} got={dh.get('recommended')}")
+
+    # audit_pack 的扫描面：正斜杠绝对路径写在 .mjs 里也必须抓（.mjs 曾经不在扫描范围）
+    fake_pack = os.path.join(tmp, "fake-pack")
+    os.makedirs(os.path.join(fake_pack, "scripts"), exist_ok=True)
+    with open(os.path.join(fake_pack, "x.mjs"), "w", encoding="utf-8") as f:
+        # 故意拆开字面量：这个文件本身也在 audit_pack 的扫描范围内
+        f.write("const u = 'D:" + "/AI/somewhere/index.js'\n")
+    r = run_env("audit_pack.py", ["--root", fake_pack])
+    check("audit_pack 能抓 .mjs 里的正斜杠绝对路径",
+          "绝对路径: x.mjs" in (r.stdout + r.stderr),
+          (r.stdout + r.stderr).strip().splitlines()[:2])
 
     # env_check 也要把「配置写坏」判成缺项（否则会拿着回退的 ~/.dsh 报「齐备」）
     r = run_env("env_check.py", ["--json", "--config", bad_cfg])
@@ -623,10 +710,33 @@ def main():
     check("BOM + 空格 + 中文路径下 baseline 能跑", r.returncode == 0 and "samples" in r.stdout,
           f"rc={r.returncode} err={(r.stderr or '')[:60]}")
 
+    # 中文用户名：别人机器上 `C:\Users\张三` 很常见。配置里写 `~/dsh-home`，逼 expanduser 走一遍
+    # （路径拼接与编码在前一条已覆盖，这里单独盯「用户目录名含中文」这一层）
+    cn_ok, cn_detail = True, "POSIX 下 ~ 由 pwd 决定，本用例只对 Windows 的 USERPROFILE 成立"
+    if os.name == "nt":
+        cn_user = os.path.join(tmp, "张三")
+        cn_home = os.path.join(cn_user, "dsh-home")
+        put_session(cn_home, "session-cn", "baseline_session.jsonl", tmp)
+        cn_cfg = os.path.join(tmp, "cn-cfg.yaml")
+        with open(cn_cfg, "w", encoding="utf-8") as f:
+            f.write('dsh_home: "~/dsh-home"\n')
+        cn_env = dict(os.environ)
+        cn_env["USERPROFILE"] = cn_user
+        cn_env["HOME"] = cn_user
+        r = subprocess.run([PY, os.path.join(SCRIPTS, "baseline.py"), "--config", cn_cfg],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=cn_env, cwd=ROOT)
+        cn_ok = r.returncode == 0 and "samples" in r.stdout
+        cn_detail = f"rc={r.returncode} err={(r.stderr or '')[:60]}"
+    check("中文用户名下 ~ 展开正确（Windows 走 USERPROFILE）", cn_ok, cn_detail)
+
     # 无 HOME / USERPROFILE：可读报错 + 明确提示 ~ 展不开（POSIX 下 expanduser 走 pwd，跳过）
     if os.name == "nt":
+        # DSH_HOME 也是 home 来源之一：宿主若注入了它，就永远走不到「~ 展不开」那一支，
+        # 用例会因为「跑在哪个 shell 里」而时红时绿，所以这里必须一起删掉。
         no_home_env = {k: v for k, v in os.environ.items()
-                       if k.upper() not in ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")}
+                       if k.upper() not in ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+                                            "DSH_HOME")}
         r = subprocess.run([PY, os.path.join(SCRIPTS, "retry_patterns.py"),
                             "--days", "3", "--config", os.path.join(tmp, "nope.yaml")],
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -704,16 +814,32 @@ def main():
     except json.JSONDecodeError:
         ec4 = {}
     unzip_row = next((c for c in ec4.get("checks") or [] if c.get("key") == "unzip"), {})
-    check("假 zstandard 模块不被 env_check 判可用",
-          r.returncode == 1 and unzip_row.get("ok") is False
-          and "ZstdDecompressor" in (unzip_row.get("detail") or ""),
-          str(unzip_row.get("detail"))[:80])
+    if has_builtin_zstd:
+        # 3.14 内建通道可用：假 zstandard 不该把 unzip 判成缺失（自检与实现同口径）
+        check("假 zstandard 模块不影响内建解压通道的判定",
+              r.returncode == 0 and unzip_row.get("ok") is True
+              and "内建" in (unzip_row.get("detail") or ""),
+              f"rc={r.returncode} {str(unzip_row.get('detail'))[:80]}")
+    else:
+        check("假 zstandard 模块不被 env_check 判可用",
+              r.returncode == 1 and unzip_row.get("ok") is False
+              and "ZstdDecompressor" in (unzip_row.get("detail") or ""),
+              str(unzip_row.get("detail"))[:80])
     r = run_env("baseline.py", ["--config", e2e_cfg], extra_env={"PYTHONPATH": fake_zstd},
                 path_override=bare_path)
-    check("假 zstandard 模块解压时给一句话而不是 AttributeError",
-          r.returncode != 0 and "ZstdDecompressor" in (r.stdout + r.stderr)
-          and "Traceback" not in (r.stdout + r.stderr),
-          (r.stdout + r.stderr)[:80])
+    # Python ≥ 3.14 自带 compression.zstd：解压不再依赖 zstandard，假模块根本不会被调用。
+    # 低版本 Python 才走 zstandard 回退，此时必须给一句话而不是 traceback。
+    if has_builtin_zstd:
+        # baseline 可能因为「会话步数不够」而正常退出 1：这里只关心它没走缺解压器的分支
+        output = r.stdout + r.stderr
+        check("内建 compression.zstd 优先，假 zstandard 不误伤",
+              "Traceback" not in output and "解压需要二选一" not in output
+              and "ZstdDecompressor" not in output, output[:120])
+    else:
+        check("假 zstandard 模块解压时给一句话而不是 AttributeError",
+              r.returncode != 0 and "ZstdDecompressor" in (r.stdout + r.stderr)
+              and "Traceback" not in (r.stdout + r.stderr),
+              (r.stdout + r.stderr)[:80])
 
     # 徽章漂移必须阻断（「中」不阻断 CI 等于没门禁）
     badge_root = os.path.join(tmp, "badgeproj")
@@ -763,6 +889,89 @@ def main():
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={**os.environ, "PYTHONIOENCODING": "utf-8"}, cwd=ROOT)
     check("首次上手 10 步无 traceback", r.returncode == 0, (r.stdout or "")[-160:])
+
+    # 22. 账本 v2：从会话日志派生、计价可手算、重复 ingest 幂等、下游脚本能读
+    #     （成本插件的替代物；口径 = output×0.6 + input×0.15 + cacheRead×0.003 再乘汇率）
+    lhome = os.path.join(tmp, "ledger-home")
+    lsess = os.path.join(lhome, "sessions", "sess-a")
+    os.makedirs(lsess, exist_ok=True)
+    ts = int(datetime(2026, 10, 20, 12, 0, tzinfo=timezone(timedelta(hours=8))).timestamp() * 1000)
+    with open(os.path.join(lsess, "session.v4.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "session", "version": 4, "id": "sess-a",
+                            "cwd": "X", "origin": "main", "createdAt": ts}) + "\n")
+        f.write(json.dumps({"type": "assistant/message", "seq": 1, "time": ts,
+                            "data": {"turn": 1, "step": 1,
+                                     "message": {"role": "assistant",
+                                                 "source": {"kind": "model",
+                                                            "provider": "deepseek-account",
+                                                            "model": "deepseek-flash"}},
+                                     "usage": {"inputTokens": 1000000, "cacheReadTokens": 1000000,
+                                               "cacheWriteTokens": 0, "outputTokens": 1000000,
+                                               "totalTokens": 3000000}}}) + "\n")
+    lcfg = os.path.join(tmp, "ledger-config.yaml")
+    with open(lcfg, "w", encoding="utf-8") as f:
+        f.write(f'dsh_home: "{lhome.replace(chr(92), "/")}"\n'
+                'ledger:\n  path: "led.json"\n  timezone: "Asia/Shanghai"\n'
+                '  prices:\n    currency: USD\n    fx: { usdToCny: 6.67 }\n'
+                '    models:\n      deepseek-flash: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6 }\n')
+    r = run("ledger.py", "ingest", "--config", lcfg)
+    check("ledger ingest 成功", r.returncode == 0, (r.stdout + r.stderr)[-200:])
+    led = json.load(open(os.path.join(tmp, "led.json"), encoding="utf-8"))
+    got = led["days"]["2026-10-20"]["costCny"]
+    expect = (1000000 * 0.15 + 1000000 * 0.003 + 1000000 * 0.6) * 6.67 / 1e6
+    check("ledger 计价与手算一致", abs(got - expect) < 1e-6, f"got={got} expect={expect:.6f}")
+    check("ledger 会话归因落盘", "sess-a" in led["days"]["2026-10-20"]["sessions"])
+
+    first_days = led["days"]
+    r = run("ledger.py", "ingest", "--config", lcfg)
+    led2 = json.load(open(os.path.join(tmp, "led.json"), encoding="utf-8"))
+    check("ledger 重复 ingest 幂等", led2["days"] == first_days and "缓存命中 1" in r.stdout,
+          (r.stdout or "")[-160:])
+    r = run("ledger.py", "verify", "--config", lcfg)
+    check("ledger verify 自洽", r.returncode == 0 and "自洽" in (r.stdout or ""), (r.stdout or "")[-160:])
+    r = run("cost_summary.py", "--config", lcfg, "--days", "3")
+    check("cost_summary 读新账本", r.returncode == 0 and "2026-10-20" in (r.stdout or ""),
+          (r.stdout + r.stderr)[-200:])
+
+    # 19.5 交接卡：卡片是切会话唯一的重建入口，下面任一条坏掉，接手者就得回去读原对话
+    put_session(home, "session-ab12cd34", "handoff_session.jsonl", tmp)
+    r = run("handoff.py", "--session", "ab12cd34", "--slug", "t",
+            "--dsh-home", home, "--config", prices, "--print-only")
+    hout = r.stdout or ""
+
+    def card_field(name):
+        for line in hout.splitlines():
+            if line.startswith(f"- {name}："):
+                return line.split("：", 1)[1]
+        return None
+
+    check("交接卡带会话 id", re.search(r"> 会话 ab12cd34 ·", hout) is not None, hout[:200])
+    check("交接卡目标取首条、不认系统注入",
+          (card_field("目标") or "").startswith("把交接卡补上会话号") and "<system-reminder>" not in hout,
+          hout[:400])
+    check("交接卡记最近指令（末条是按语也不吞）", card_field("最近指令") == "继续", hout[:400])
+    # 上限：切片后再拼省略号，历史上多出 1 字（80→81、160→161），这类越界靠断言守住
+    check("交接卡目标/最后一句不超过 80/160 字",
+          len(card_field("目标") or "") <= 80 and len(card_field("最后一句") or "") <= 160,
+          f"目标={len(card_field('目标') or '')} 最后一句={len(card_field('最后一句') or '')}")
+    check("交接卡关键片段标来源且跳过临时脚手架",
+          "（最后一次代码改动）" in hout and "```python" in hout and "_tmp_probe" not in hout,
+          hout[:400])
+    # 内容块是字符串的日志变体不该崩：直接调函数，省一次子进程
+    import handoff as ho
+    check("交接卡兼容 content 为字符串的日志", ho.blocks_text("一段话") == "一段话"
+          and ho.blocks_text([{"type": "text", "text": "a"}, {"type": "reasoning", "text": "b"}]) == "a")
+    # --if-absent 不许覆盖已有卡（胶囊自动触发就靠这条，覆盖手写卡=丢交接）
+    mem = os.path.join(tmp, "mem")
+    keep_dir = os.path.join(mem, "default-workspace", "20261025-keep")
+    os.makedirs(keep_dir, exist_ok=True)
+    keep_card = os.path.join(keep_dir, "00-card.md")
+    with open(keep_card, "w", encoding="utf-8") as f:
+        f.write("手写卡\n")
+    run("handoff.py", "--session", "ab12cd34", "--slug", "keep", "--dsh-home", home,
+        "--config", prices, "--memory-root", mem, "--if-absent")
+    with open(keep_card, encoding="utf-8") as f:
+        check("交接卡 --if-absent 不覆盖手写卡", f.read() == "手写卡\n")
 
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）

@@ -17,47 +17,108 @@ dsh_home 唯一口径（本文件是唯一实现，脚本里别再手写）：
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 
 DEFAULT_CONFIG = "config.yaml"
 
 
+def unzip_channels():
+    """解压通道探测：返回按优先级排列的三条通道（命令 / 内建 / 模块）。
+
+    为什么单列：`env_check` 曾自己写一套判断（只认 `zstd` 命令与 `zstandard` 模块），
+    而 `decompress_bytes` 还有第三条通道——Python ≥ 3.14 内建的 `compression.zstd`。
+    两边口径不一的后果不是报错，而是**门禁比实现严**：在「3.14 + 没装 zstandard +
+    没有 zstd 命令」的机器上，自检判「必需项缺失、退出码 1」，把用户指去装一个根本
+    用不到的包；而所有看账脚本其实都能解压。通道与顺序只能有一份，两边都调这里。
+    """
+    exe = shutil.which("zstd")
+    chans = [{
+        "name": "command", "ok": bool(exe), "label": "zstd 命令",
+        "detail": f"zstd 命令 {exe}" if exe else "没有 zstd 命令",
+    }]
+    ok, why = False, ""
+    try:
+        from compression import zstd as _cz  # noqa: F401  Py ≥ 3.14
+        if hasattr(_cz, "decompress"):
+            ok = True
+        else:
+            why = "compression.zstd 能导入但缺 decompress（同名假模块？）"
+    except ImportError:
+        why = (f"Python {sys.version_info[0]}.{sys.version_info[1]} 没有内建 "
+               "compression.zstd（3.14+ 才有）")
+    except Exception as e:  # 残缺/损坏的模块：能 import 但一用就炸
+        why = f"compression.zstd 导入失败：{e}"
+    chans.append({"name": "builtin", "ok": ok, "label": "Python 内建 compression.zstd",
+                  "detail": "Python 内建 compression.zstd" if ok else why})
+    ok, why = False, ""
+    try:
+        import zstandard as _zs  # noqa: F401
+        if hasattr(_zs, "ZstdDecompressor"):
+            ok = True
+        else:
+            why = "zstandard 能导入但缺 ZstdDecompressor（同名假模块？）"
+    except ImportError:
+        why = "没有 zstandard 模块"
+    except Exception as e:
+        why = f"zstandard 导入失败：{e}"
+    chans.append({"name": "module", "ok": ok, "label": "zstandard 模块",
+                  "detail": "zstandard 模块" if ok else why})
+    return chans
+
+
+def unzip_available():
+    """可用的解压通道列表：非空即「能解压」。
+
+    env_check 与 decompress_bytes 必须用同一个判据，否则会出现
+    「自检说缺件、脚本却跑得动」这种最难排查的分歧。
+    """
+    return [c for c in unzip_channels() if c["ok"]]
+
+
 def decompress_bytes(path):
-    """解压 .zstd：先试 zstd 命令，没有再用 Python zstandard；两者都不可用时一句话退出。
+    """解压 .zstd：命令 → 内建 → 模块，逐条降级；都不行时一句话退出（不抛 traceback）。
 
     为什么收在公共层：这段逻辑原先在 baseline / failure_analysis / turn_cost / skill_usage /
-    measure_modules 里各有一份，且都直接 `zstd.ZstdDecompressor()`——遇到同名假模块（能
-    import 但没有 API）会抛 AttributeError traceback。
+    measure_modules / retry_patterns 里各有一份，且都直接 `zstd.ZstdDecompressor()`——遇到
+    同名假模块（能 import 但没有 API）会抛 AttributeError traceback；更糟的是副本之间会漂移：
+    `retry_patterns.py` 那份至今没有内建通道，于是同一台机器上「大部分脚本能跑、它自己说不能」。
     """
-    try:
-        r = subprocess.run(["zstd", "-dc", path], capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            return r.stdout
-    except FileNotFoundError:
-        pass
-    try:
+    have = {c["name"]: c["ok"] for c in unzip_channels()}
+    if have.get("command"):
+        try:
+            r = subprocess.run(["zstd", "-dc", path], capture_output=True)
+            if r.returncode == 0 and r.stdout:
+                return r.stdout
+        except OSError:
+            pass  # 命令在但执行不了（权限/损坏）：继续降级，不在这一层判死
+    if have.get("builtin"):
+        from compression import zstd as czstd
+        try:
+            with open(path, "rb") as f:
+                return czstd.decompress(f.read())
+        except Exception as e:
+            sys.exit(f"zstd 解压失败（内建 compression.zstd）：{path}（{e}）")
+    if have.get("module"):
         import zstandard as zstd
         dctx = zstd.ZstdDecompressor()
-    except ImportError:
-        sys.exit("解压需要二选一：`pip install zstandard`（首选）或装 `zstd` 命令"
-                 "（macOS: brew install zstd；Debian/Ubuntu: apt install zstd）。")
-    except AttributeError:
-        sys.exit("装的 zstandard 没有 ZstdDecompressor API（可能是同名假模块）："
-                 "pip install -U zstandard")
-    with open(path, "rb") as f:
-        data = f.read()
-    out = []
-    while data:
-        dobj = dctx.decompressobj()
-        try:
-            out.append(dobj.decompress(data))
-        except Exception:
-            sys.exit(f"zstd 解压失败（文件损坏或不是 zstd 流）: {path}")
-        if not dobj.eof:
-            break
-        data = dobj.unused_data
-    return b"".join(out)
+        with open(path, "rb") as f:
+            data = f.read()
+        out = []
+        while data:
+            dobj = dctx.decompressobj()
+            try:
+                out.append(dobj.decompress(data))
+            except Exception:
+                sys.exit(f"zstd 解压失败（文件损坏或不是 zstd 流）: {path}")
+            if not dobj.eof:
+                break
+            data = dobj.unused_data
+        return b"".join(out)
+    sys.exit("解压需要二选一：`pip install zstandard`（首选，跨平台）或装 `zstd` 命令"
+             "（macOS: brew install zstd；Debian/Ubuntu: apt install zstd）。"
+             "Python ≥ 3.14 自带 compression.zstd，不需要装任何东西。")
 
 
 def utf8_stdio():
@@ -194,6 +255,23 @@ def resolve_dsh_homes(arg="", cfg=None, base=None, env=None):
     return out
 
 
+def home_candidates(cfg=None, base=None, env=None):
+    """[(home, 来源)]：config → $DSH_HOME → 默认 ~/.dsh，顺序固定并带来源标签。
+
+    为什么单列：detect_home 要把「配置/环境给的」与「我自己扫盘扫到的」分开报出来，
+    否则报告里看不出哪条是用户自己配的；但脚本里不许自己读 DSH_HOME（口径只在本文件），
+    所以「读取 + 标注来源」一起放在这里，探测脚本只消费结果。
+    """
+    env = os.environ if env is None else env
+    out = [(h, "config.yaml") for h in _cfg_homes(cfg or {}, base)]
+    env_home = (env or {}).get("DSH_HOME")
+    if env_home:
+        out.append((expand(env_home), "$DSH_HOME"))
+    if not out:
+        out.append((expand("~/.dsh"), "默认 ~/.dsh"))
+    return out
+
+
 def resolve_dsh_home(arg="", cfg=None, base=None, env=None):
     """单 home 版本：同 resolve_dsh_homes，取第一个。"""
     return resolve_dsh_homes(arg, cfg=cfg, base=base, env=env)[0]
@@ -204,7 +282,26 @@ def sessions_root(home):
 
 
 def ledger_path(home):
+    """旧口径（cost-meter 插件账本）。2026-10-24 起账本由 scripts/ledger.py 派生，见 ledger_paths。"""
     return os.path.join(expand(home), "storages", "cost-meter", "ledger.json")
+
+
+def ledger_paths(cfg=None, base=None, homes=None, explicit=""):
+    """账本候选路径，按优先级：显式参数 > config 的 ledger.path > 旧插件路径。
+
+    为什么保留旧路径：迁移期/别的机器上可能还没跑 ledger.py，读旧账本总比报「没有数据」好；
+    两个都存在时，新账本的 schema=tg-ledger/2 会被优先使用（读方按顺序取第一份有效文件）。
+    """
+    out = []
+    if explicit:
+        out.append(expand(explicit))
+    if isinstance(cfg, dict):
+        raw = ((cfg.get("ledger") or {}).get("path") or "").strip()
+        if raw:
+            out.append(expand(raw, base))
+    for h in (homes or []):
+        out.append(ledger_path(h))
+    return out
 
 
 def add_common_args(ap, config=True, home=True, json_flag=False):

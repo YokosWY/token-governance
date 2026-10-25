@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v0.13.1-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v0.14.5-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-23-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-126-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-26-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-147-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>
@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、23 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
+> 10 个技能、25 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
 > 必需依赖三项：Python 3.9+、pyyaml、解压器（`pip install zstandard` 或 `zstd` 命令，二选一）；Node 18+ 仅用于守卫自检。
 > 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
@@ -38,6 +38,7 @@
 - **静态前缀优先**——工具清单与技能目录是每步都发的固定开销，收益最稳。一个 200 k 窗口的样本里：工具清单 230–265 → 174 个、schema 284–312 → 154 kB，技能目录单条 42 → 9.6 kB。
 - **目录旁路池**——可发现不等于可调用。10 个技能只留 `tg-router` 常驻，其余标 `disable-model-invocation`，模型侧不可见，用 `read` 或 `/名字` 调；装再多也不增加每步固定开销。
 - **不改写历史**——缓存键是精确 token 前缀。一次消息改写会让改写点之后的整段前缀按输入价重算，与缓存价相差 50 倍；因此事后裁剪阈值设到不触发，体积在写入时处理（工具输出落盘）。
+- **工具输出在入口瘦一次**——`dsh-tg-account` 的 `tools/post-execute` 钩子只在新结果进上下文的那一刻改写：结构感知窗口（表格带原始行号采样）、重复行折叠、错误行强制保留，双门控（≤72% 且省 ≥500 B 且 token 严格下降）不过就放行，原文先落盘、notice 里带路径供 `read` 取回。不注册新工具，零常驻 schema。本机 133 会话实测：198 次压缩、省 1.33 MB、净省约 ¥1.9（≈ 同批花费 1.8%），属零钱，不是主力。
 - **压缩只当安全阀**——压缩一次把整段前缀打回未命中，省的是缓存价、赔的是输入价；实测 729 步会话压缩 4 次，净收益接近零。阈值宁高勿低（0.8），只在接近窗口上限时触发。
 - **口径分三层**——单步 / 每轮（一条用户指令）/ 任务都能出数。`turn_cost.py` 按轮算钱并给中位、均值、P90，避免「每步变便宜」掩盖长尾。
 - **运行时防线**——循环守卫按「工具名 + 参数哈希」严格相等计次，第 2 / 4 / 6 次追加提醒；不阻断调用、不弹窗、不结束会话。参数预览默认关闭，避免密钥进上下文。
@@ -97,9 +98,26 @@ python scripts/env_check.py --json     # 给安装脚本或 CI 读
 ```
 
 ```bash
-cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) 技能入目录，重启 DSH 后生效
-cp config.example.yaml config.yaml                 # 2) 改 dsh_home、memory_root、skills_dir 三行
-python scripts/preflight.py --config config.yaml   # 3) 只读预检：放行 0 / 待确认 1 / 拒绝 2
+# 1) 先自动找 DSH 数据目录。别猜 ~/.dsh：桌面版 home 由安装位置决定，可以是任意盘任意目录
+python scripts/detect_home.py                     # 输出可直接粘贴的 dsh_home 片段
+cp config.example.yaml config.yaml                # 2) 把上一步那行填进 dsh_home（memory_root / skills_dir 同看）
+python scripts/env_check.py                       # 3) 依赖齐不齐（缺必需项时退出码 1）
+cp -r skills/tg-* "$DSH_HOME/skills/"             # 4) 技能入目录，重启 DSH 后生效
+python scripts/preflight.py --config config.yaml  # 5) 只读预检：放行 0 / 待确认 1 / 拒绝 2
+```
+
+> `python` 与 `python3`：Windows 上是 `python`，macOS / 多数 Linux 发行版只有 `python3`（`python` 可能不存在，
+> 或是 Windows 商店的占位别名）。下面所有 `python scripts/...` 在那些机器上换成 `python3 scripts/...` 即可。
+
+同一组命令在 **PowerShell** 里不能照抄：`$DSH_HOME` 是 bash 写法，PowerShell 里会展开成空串，
+`cp -r ... "$DSH_HOME/skills/"` 就变成往当前盘根目录写；`cp -r` 也不是 bash 的递归复制。对应写法：
+
+```powershell
+# 把 detect_home.py 建议的路径填进来（这一步就是替代 bash 里的 $DSH_HOME）
+$dshHome = "E:/apps/dsh"
+Copy-Item -Recurse skills\tg-* "$dshHome\skills\"
+Copy-Item config.example.yaml config.yaml
+python scripts\preflight.py --config config.yaml
 ```
 
 装好先正常用一天。账本由 cost-meter 记；空环境跑体检会提示「没有可读的 ledger」并退出码 1，属正常：
@@ -109,6 +127,14 @@ python scripts/cost_summary.py --config config.yaml --days 3
 ```
 
 只要路由层也可以：复制 `skills/tg-router` 与 `scripts/` 就能跑，其余技能按需加。
+
+### 只装技能（没有 `scripts/`）
+
+从技能市场装、或手动只拷 `skills/tg-*` 时，`scripts/` 与 `docs/` 不在。`tg-router` 会先探测
+（`ls scripts/tg_common.py` → `NO-SCRIPTS`），然后按**形态 B** 降级：只讲口径、不报具体金额，
+并明确说「要跑数得补仓库」。这是刻意的——宁可少给结论，也不给一个没算过的数。
+
+要跑数就补齐：把 `scripts/`、`docs/`、`config.example.yaml` 拷到技能根，或整体重装。
 
 循环守卫单独安装：`python scripts/install_guard.py --home "$DSH_HOME" --apply`，默认 dry-run，改 `package.json` 前备份；卸载用同一脚本 `--uninstall`。
 
@@ -145,12 +171,12 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（23 个）
+### 脚本（25 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
-| 体检 | `env_check` / `doctor` / `schema_budget` | 换机器先查依赖与数据目录；一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
-| 看账 | `cost_summary` / `cache_audit` / `compare_days` | 花了多少、命中多少、按天趋势 |
+| 体检 | `env_check` / `detect_home` / `doctor` / `schema_budget` | 换机器先查依赖与数据目录；自动探测 DSH home（别猜 `~/.dsh`）；报计价来源（价表 / 汇率 / 时区）；一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
+| 看账 | `ledger` / `cost_summary` / `cache_audit` / `compare_days` | 从会话日志重建账本（日/模型/会话）；花了多少、命中多少、按天趋势；**价表没覆盖的模型会计入 `pricing.unmatched` 并报「含估算」**，不再静默套默认价 |
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
 | 改配置 | `preflight` / `gen_preset_override` / `patch_snapshot` / `install_guard` | 装前查冲突、升级后重生成、改坏能回滚 |
 | 守质量 | `baseline` / `audit_pack` / `gen_metrics` / `check_yaml` / `new_session` / `guard_stats` | 首日基线、包自检、数字单源、会话卡、守卫命中统计 |
@@ -168,17 +194,17 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 23 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
+  scripts/                     # 25 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 126 项断言 + fixtures
-  docs/                        # 5 篇：benchmark / principles / operations / concepts / adaptation
+  tests/                       # 147 项断言 + fixtures
+  docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
 
 > 需求澄清技能 `clarify-needs` 已于 v0.11.1 迁出，独立仓库：
 > [dsh-clarify-tier](https://github.com/YokosWY/dsh-clarify-tier)（`skill/clarify-needs`）。
 
-数据流：会话日志（`sessions/**/session.v4.jsonl.zstd`）与账本（`storages/cost-meter/ledger.json`）→ 计量脚本 → 报告与文档表格。所有脚本只读，不写用户的会话与账本。
+数据流：会话日志（`sessions/**/session.v4.jsonl.zstd`）→ `ledger.py` 派生账本（默认 `data/ledger.json`）→ 计量脚本 → 报告与文档表格。除 `ledger.py ingest` 写自己的账本外，其余脚本只读，不写用户的会话与账本。
 
 ## 验收情况
 
@@ -186,12 +212,12 @@ token-governance/
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 126 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 147 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
-都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard`）、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
+都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard` / 3.14 内建 `compression.zstd`）、账本 v2 派生与幂等、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、14 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
 `.github/workflows/ci.yml` 有三个门禁：Windows 验收 job、Ubuntu/macOS × Python 3.10/3.12 兼容矩阵（2026-10-24 首轮全绿后转正）、首次上手 job（空 home 跑 10 步）；另有 Linux 全量测试探测，不阻塞。
 
@@ -293,11 +319,13 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 - [`docs/operations.md`](docs/operations.md)：循环守卫与协议纪律
 - [`docs/concepts.md`](docs/concepts.md)：自造词解释 + 六个机制
 - [`docs/adaptation.md`](docs/adaptation.md)：换机器、换客户端、没有账本时怎么降级
+- [`docs/ledger-v2.md`](docs/ledger-v2.md)：账本 v2 schema、计价口径、峰谷为什么默认关、与旧账本的逐日校验
 
 ## 版本
 
 | 版本 | 内容 |
 |---|---|
+| v0.14.0 | 账本 v2：`ledger.py` 从会话日志派生日/模型/会话三级成本（幂等 + 文件级缓存），替代已卸载的 `dsh-cost-meter`；`tg_common` 补 3.14 内建 `compression.zstd` 与 `ledger_paths`；下游 `cost_summary`/`cache_audit`/`env_check` 兼容新旧账本；测试 132 项 |
 | v0.13.1 | 首次上手成门禁（`tests/first_run.py` + CI job）；`install_guard --config`；测试 126 项 |
 | v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 126 项 |
 | v0.12.0 | 抽 `tg_common.py` 统一 `dsh_home` 解析与配置读取；配置读不出改为报错；`compare_days` 优先级翻转并补 `--dsh-home`；测试 98 项 |

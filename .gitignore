@@ -15,6 +15,9 @@ __pycache__/
 *.pyc
 reports/
 tmp/
+# ledger.py 派生出的本机账本与解析缓存（含会话 ID / 标题，不要提交）
+data/ledger.json
+data/ledger.json.cache.json
 # baseline.py --write 的本机基线（doctor --apply 会生成）
 tg-baseline.json
 
@@ -24,3 +27,6 @@ promo/checks.json
 
 # 本机私有资料（不发布）
 _local/
+
+# 锻造草稿（round-* 脚本、state.json、样本卡，含本机路径）
+_forge/

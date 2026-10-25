@@ -26,6 +26,12 @@ description: "tg 子技能 · 上下文工程：工具清单/技能目录/工具
 | 工具输出 | `spill-policy.maxInlineTokens` 落盘；pruner 只在压缩期裁 | >6 k tokens 落盘给路径 |
 | 压缩（安全阀，别当杠杆） | `thresholdRatio` + `retainRatio` | 462 k → 185 k，但见下节 |
 
+**两类「压缩」别混**：上表末行的 `compaction` 是把历史摘要掉、整段前缀重算（见下节经济学，净收益接近零）；
+TG 内置的**工具输出压缩**（`dsh-tg-account` 的 `tools/post-execute` 钩子，2026-10-25 起）只在结果进上下文
+那一刻改写一次，之后前缀字节不变、缓存照常命中，成本结构和 compaction 完全不同——它算「工具输出」那把刀。
+实测本机 133 会话 / 1.02 万请求：压缩 198 次、省 1.33 MB，净省约 ¥1.9（≈ 同批总花费 1.8%）。
+便宜、几乎零风险，但别当主力：真正的钱在会话长度和常驻前缀上。
+
 工具清单要能定位到「谁装上来的」：`python scripts/schema_budget.py --top 12` 出一个会话里
 工具 schema 按服务（`mcp:<server>`）、按工具族的 KB 排行，并对 `config.yaml` 的
 `schema_budget_kb` 卡预算（`--check` 超了退出码 1）。实测一台机器 174 个工具 / 150 KB，

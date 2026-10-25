@@ -180,7 +180,7 @@ python scripts/measure_modules.py --session <id> --cf-schema 284000 --cf-catalog
 | 样本 C | 97 | 23 | 0.0346 | 0.0494 | 30.1% |
 
 ```bash
-python scripts/measure_modules.py --session f7a82a7e --dsh-home D:/AI/DSH-NEXT --cf-schema 312000 --cf-catalog 42500
+python scripts/measure_modules.py --session f7a82a7e --dsh-home ~/.dsh --cf-schema 312000 --cf-catalog 42500
 ```
 
 这个口径只缩放工具 schema 与技能目录两项，没有模拟旧配置下裁剪与压缩改写造成的前缀重算。旧配置真实成本更高，所以 30–39% 是下限。

@@ -32,6 +32,27 @@ prices_usd_per_mtok:
 # USD→CNY 汇率；不写则为 7.1，输出会标注「默认 flash 价（估算）」
 rate: 7.1
 
+# 账本 v2：由 scripts/ledger.py 从会话日志派生（替代 2026-10-24 卸载的 dsh-cost-meter 插件）
+# 字段与口径见 docs/ledger-v2.md；不写这一节也能跑（用上面 prices_usd_per_mtok 兜底）
+ledger:
+  path: "data/ledger.json"       # 相对本配置文件所在目录
+  timezone: "Asia/Shanghai"
+  currency: CNY
+  prices:
+    currency: USD
+    fx:
+      usdToCny: 7.1
+    peak:
+      enabled: false             # 默认关：旧插件的峰谷规则复现不出来，见 docs/ledger-v2.md
+      windows: [[1, 4], [6, 10]]
+      holidays: []
+    # 每模型三档价（USD / 百万 token）；不写 peak 时按 2 倍估
+    models:
+      deepseek-flash: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6,
+                        peak: { cacheMiss: 0.3, cacheHit: 0.006, output: 1.2 } }
+    default: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6,
+               peak: { cacheMiss: 0.3, cacheHit: 0.006, output: 1.2 } }
+
 # 循环守卫（插件 dsh-loop-guard）的默认参数；安装脚本会写进对应 profile 的 loop-guard 条目
 loop_guard:
   enabled: true

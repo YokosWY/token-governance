@@ -18,7 +18,7 @@ import json
 import os
 import sys
 
-from tg_common import expand, load_config, resolve_dsh_homes, utf8_stdio
+from tg_common import expand, ledger_paths, load_config, resolve_dsh_homes, utf8_stdio
 
 DEFAULT_IN = 0.15      # 未命中输入价（USD / M tok），换 provider 自己改
 DEFAULT_CACHE = 0.003  # 命中价
@@ -102,7 +102,12 @@ def collect_ledgers(args):
         homes = [expand(args.home)] + [h for h in homes if os.path.realpath(h) != os.path.realpath(expand(args.home))]
     if args.ledger:
         candidates.append(expand(args.ledger))
-    candidates += [os.path.join(h, "storages", "cost-meter", "ledger.json") for h in homes]
+    # 新账本（ledger.py 派生）优先；旧插件路径保留作迁移期兜底，存在新账本时只读新的
+    new_first = ledger_paths(cfg, base, homes)
+    if any(os.path.isfile(p) for p in new_first[:1]):
+        candidates = new_first[:1] + candidates
+    else:
+        candidates += new_first
     if not candidates:
         candidates = [os.path.join(expand("~/.dsh"), "storages", "cost-meter", "ledger.json")]
 

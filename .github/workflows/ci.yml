@@ -21,7 +21,7 @@ jobs:
           pip install zstandard pyyaml
       - name: 环境自检（Python / pyyaml / 解压器 / node / dsh_home）
         run: python scripts/env_check.py --json
-      - name: 回归测试（122 项）
+      - name: 回归测试（136 项）
         run: python tests/run_tests.py
       - name: 包自检（结构 / 引用 / 陈旧词 / 数字单源）
         run: python scripts/audit_pack.py
@@ -35,7 +35,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.10", "3.12"]
+        python: ["3.10", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,6 +53,28 @@ jobs:
           python scripts/gen_metrics.py --check
       - name: 回归测试（平台相关用例在用例内判断，未适配的跳过而不是失败）
         run: python tests/run_tests.py
+
+  # Python 3.14 专项：它自带 compression.zstd，**故意不装 zstandard**，用来守住
+  # v0.14.1 修的那个 bug —— 曾经自检判「缺解压器」，而所有脚本都能解。
+  # 只装 pyyaml，等于模拟「新机器上什么都没额外装」的真实起点。
+  py314-windows:
+    name: py314 (windows · 只装 pyyaml)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: 只装 pyyaml（故意不装 zstandard）
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+      - name: 环境自检（unzip 应报 Python 内建 compression.zstd）
+        run: python scripts/env_check.py --json
+      - name: 回归测试（夹具也走内建压缩）
+        run: python tests/run_tests.py
+      - name: 包自检
+        run: python scripts/audit_pack.py
 
   # 探测环境：Linux 全量测试跑一遍，只提前暴露路径/编码类问题，不阻塞合并
   probe:

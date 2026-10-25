@@ -25,16 +25,17 @@ import shutil
 import subprocess
 import sys
 
-from tg_common import (add_common_args, config_base, emit_json, load_config,
-                       resolve_dsh_home, sessions_root, utf8_stdio)
+from tg_common import (add_common_args, config_base, emit_json, ledger_paths, load_config,
+                       resolve_dsh_home, sessions_root, unzip_channels, utf8_stdio)
 
 utf8_stdio()
 
 MIN_PY = (3, 9)
 FIX = {
     "python": "装 Python 3.9+（本项目在 3.9/3.14 上验过；低于 3.9 不保证）",
-    "pyyaml": "pip install pyyaml",
-    "zstd": "pip install zstandard（首选，跨平台）；或装系统包：macOS brew install zstd、"
+    "pyyaml": "pip install pyyaml（Linux/macOS 上若 python 不在 PATH，用 python3 -m pip）",
+    "zstd": "Python ≥ 3.14 自带 compression.zstd，无需安装；更老的 Python 二选一："
+            "pip install zstandard（首选，跨平台），或装系统包：macOS brew install zstd、"
             "Debian/Ubuntu apt install zstd。Windows 不保证自带 zstd.exe",
     "node": "装 Node 18+（只影响 verify_guard.mjs 的守卫自检，不影响看账）",
 }
@@ -102,19 +103,22 @@ def check_config(path):
 
 
 def check_unzip():
-    exe = shutil.which("zstd")
-    mod, why = _probe_module("zstandard", "ZstdDecompressor")
-    ok = bool(exe) or mod
-    got = []
-    if exe:
-        got.append(f"zstd 命令 {exe}")
-    if mod:
-        got.append("Python zstandard 模块")
-    if not ok and why:
-        got.append(why)
+    """解压器判定：直接问 tg_common 的通道表，不在这里另立一套。
+
+    历史教训：本函数曾只认 `zstd` 命令与 `zstandard` 模块，漏了 Python ≥ 3.14 的内建
+    `compression.zstd`；于是「3.14 + 没装 zstandard + 没有 zstd 命令」的机器上自检报
+    「必需项缺失、退出码 1」，而所有脚本都能正常解压。用户被指去装一个用不到的包，
+    公司机/无网环境直接卡死。判据只能有一份。
+    """
+    chans = unzip_channels()
+    ok = any(c["ok"] for c in chans)
+    got = [c["detail"] for c in chans if c["ok"]]
+    if not ok:
+        got = ["解压器缺失：会话日志（.jsonl.zstd）读不了（" +
+               "；".join(c["detail"] for c in chans) + "）"]
     return {
         "key": "unzip", "level": "required", "ok": ok,
-        "detail": "、".join(got) if got else "解压器缺失：会话日志（.jsonl.zstd）读不了",
+        "detail": "、".join(got),
         "fix": "" if ok else FIX["zstd"],
     }
 
@@ -143,12 +147,47 @@ def check_node():
     }
 
 
+def check_pricing(cfg, base):
+    """计价来源：别人换模型 / 换币种时，默认价表会把钱算错，而报告看起来完全正常。
+
+    只报「钱是用哪套价、哪个汇率、按哪个时区切日」，不判对错——真实单价只有用户知道。
+    没有价表时 ledger.py 会用内置 deepseek 价，这一条是给「我在用 Claude/GPT」的人看的。
+    """
+    cfg = cfg or {}
+    led = cfg.get("ledger") or {}
+    pr = led.get("prices") or {}
+    legacy = cfg.get("prices_usd_per_mtok") or {}
+    models = sorted((pr.get("models") or {}).keys()) or sorted(legacy.keys())
+    fx = (pr.get("fx") or {}).get("usdToCny")
+    asof = (pr.get("fx") or {}).get("asOf") or ""
+    cur = led.get("currency") or "CNY"
+    tz = led.get("timezone") or "系统时区"
+    if pr:
+        source = "config 的 ledger.prices"
+    elif legacy:
+        source = "退回 prices_usd_per_mtok"
+    else:
+        source = "没有价表（ledger.py 会用内置 deepseek 价）"
+    detail = f"{source}；模型 {len(models)} 个"
+    if fx:
+        detail += f"；1 USD = {fx} {cur}" + (f"（{asof}）" if asof else "（无日期，需自核）")
+    detail += f"；日按 {tz} 切"
+    return {
+        "key": "pricing", "level": "info", "ok": bool(models),
+        "detail": detail,
+        "fix": "" if models else "没有价表：换模型时钱会算错。把实际单价填进 config.yaml 的 "
+                                  "ledger.prices.models（含 cacheMiss/cacheHit/output）",
+    }
+
+
 def check_dsh_home(cfg, base, home_arg, note=""):
     home = resolve_dsh_home(home_arg, cfg=cfg, base=base)
     root = sessions_root(home)
     has_sessions = os.path.isdir(root)
-    ledger = os.path.join(home, "storages", "cost-meter", "ledger.json")
-    has_ledger = os.path.isfile(ledger)
+    # 账本可能已迁到 config 的 ledger.path（ledger.py 派生），也可能还是旧插件路径
+    paths = ledger_paths(cfg, base, [home])
+    hit = next((p for p in paths if os.path.isfile(p)), "")
+    has_ledger = bool(hit)
     writable = False
     if os.path.isdir(home):
         # os.access(W_OK) 在 Windows 上不靠谱（永远 True），用真实建临时文件探一次
@@ -163,9 +202,11 @@ def check_dsh_home(cfg, base, home_arg, note=""):
     return {
         "key": "dsh_home", "level": "info", "ok": has_sessions or has_ledger,
         "detail": (note + f"{home}；sessions={'有' if has_sessions else '无'} "
-                   f"ledger={'有' if has_ledger else '无'} 可写={'是' if writable else '否'}"),
+                   f"ledger={'有' if has_ledger else '无'}"
+                   + (f"（{hit}）" if hit else "") + f" 可写={'是' if writable else '否'}"),
         "fix": "" if (has_sessions or has_ledger)
-        else "home 里既没有 sessions 也没有 ledger：确认 --dsh-home 或 config.yaml 的 dsh_home 指对了",
+        else "home 里既没有 sessions 也没有 ledger：先跑 python scripts/detect_home.py 自动找，"
+             "或用 --dsh-home / config.yaml 的 dsh_home 指定",
     }
 
 
@@ -180,6 +221,7 @@ def main():
         # 配置坏了，后面的 home 解析会退回默认值：把这件事写在行里，别让「齐备」误导人
         cfg = {}
     rows = [check_python(), check_pyyaml(), check_unzip(), check_node(), cfg_row,
+            check_pricing(cfg, base),
             check_dsh_home(cfg, base, a.dsh_home,
                            note="" if cfg_row["ok"] else "（config 解析失败，以下按默认 home 检查）")]
 

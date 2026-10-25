@@ -11,7 +11,31 @@ import path from 'node:path'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.dirname(here)
 const vendored = path.join(repo, 'plugins', 'dsh-loop-guard', 'index.js')
-const upstream = 'D:/AI/DSH-NEXT/local-plugins/dsh-loop-guard/index.js'
+
+// 上游副本：装在 DSH home 的 local-plugins 里，用来确认仓库这份没跑偏。
+// 不能写死本机路径——换一台机器它就永远不存在，于是这段比对静默变成「跳过」，
+// 看起来通过了，实际少一项检查。按 TG_UPSTREAM → config.yaml 的 dsh_home →
+// DSH_HOME → 用户目录 依次找；config.yaml 只做一行正则，不引入 YAML 依赖。
+function configHome() {
+  try {
+    const cfg = readFileSync(path.join(repo, 'config.yaml'), 'utf8')
+    const m = cfg.match(/^dsh_home:\s*['"]?([^'"\n#]+)/m)
+    return m ? m[1].trim() : ''
+  } catch {
+    return ''
+  }
+}
+function findUpstream() {
+  if (process.env.TG_UPSTREAM) return process.env.TG_UPSTREAM
+  const roots = [configHome(), process.env.DSH_HOME, process.env.USERPROFILE, process.env.HOME]
+    .filter(Boolean)
+  for (const r of roots) {
+    const p = path.join(r, 'local-plugins', 'dsh-loop-guard', 'index.js')
+    if (existsSync(p)) return p
+  }
+  return ''
+}
+const upstream = findUpstream()
 
 const { apply } = await import(new URL('../plugins/dsh-loop-guard/index.js', import.meta.url))
 
@@ -88,14 +112,17 @@ try {
   rmSync(logDir, { recursive: true, force: true })
 }
 
-// 8) 与上游代码是否一致（有上游才算）
-if (existsSync(upstream)) {
+// 8) 与上游代码是否一致（找到上游才算；没装到 DSH 是常态，不算失败）
+const samePath = upstream && path.resolve(upstream) === path.resolve(vendored)
+if (upstream && existsSync(upstream) && !samePath) {
   const sha = f => createHash('sha256').update(readFileSync(f)).digest('hex').slice(0, 12)
   const a = sha(vendored)
   const b = sha(upstream)
   results.push(a === b ? `与上游一致（${a}）…… OK` : `与上游不一致：本地 ${a} / 上游 ${b}（若有意改动请改上游并同步）`)
 } else {
-  results.push('上游路径不存在，跳过一致性检查')
+  results.push(samePath
+    ? '上游就是本仓库这份（还没装到 DSH），跳过一致性检查'
+    : '没找到已安装的上游副本（设 TG_UPSTREAM 可指定），跳过一致性检查')
 }
 
 for (const line of results) console.log('  ' + line)

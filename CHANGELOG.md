@@ -3,6 +3,123 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.14.5 — 2026-10-25（融合 save-token 压缩核：入口改写一次，落盘可逆，零常驻 schema）
+
+把 `dsh-plugin-save-token@2.4.1` 的核心原理并进 TG 自身（`dsh-tg-account`），随后停用该插件。
+
+- **新增 `lib/compress.js`（296 行，纯函数）**：结构感知窗口（表格走「头 + 带原始行号步进采样 + 尾」）、
+  空行/重复行折叠（无损优先）、字节预算窗口（仅 ≥8KB 或 ≥240 行大输出）、单行 >420 字符首尾截断、
+  错误行 ±1 上下文保护
+- **红线照抄**：双门控（字节 ≤72% 且省 ≥500B 且估算 token 严格下降，任一不过原样放行）；
+  先 `spillStore` 落盘成功才替换，失败就放弃（可逆是硬前提）
+- **挂载方式**：`tools/post-execute` prepend，只在结果进上下文那一刻改写一次，历史字节不动（保护前缀缓存）；
+  `read` / 回读结果豁免；面板「输出瘦身」总开关同时管机械层
+- **废弃项（依据本机 133 会话/10,224 请求实测）**：TOON 无损重编码 200 次里仅 1 次命中、跨轮去重 0 命中 →
+  都不抄；`save_token_expand` 工具每请求常驻约 110 token 换 2 次调用 → 不注册，改 notice 内嵌原文 locator +
+  现有 `read`/`grep` 取回
+- **触发面做对**：按字节而非行数触发（save-token 的 `maxLines:240` 让 <240 行输出一条不压，本机 1,435 条
+  超阈值结果只压了 197 条 = 14%）
+- **账不变**：NOTICE 正则兼容 `[save-token #…]` 与 `[tg-trim #…]` 两代标记，`component` 口径继续按
+  「首次按输入价 + 之后每步按缓存价」复原
+- 测试：新增 `tests/compress.test.mjs`（8 条）、`tests/hook.test.mjs`（4 条）、`tests/notice.test.mjs`（4 条），16/16 通过
+- 面板：新增「工具输出压缩省」块（历史账 + 本进程实时计数 + 最近一次放行原因悬停）；「输出规范」→「输出瘦身」，
+  总开关同时关掉规范注入与机械压缩
+- 可调阈值：`_local/tg-compress.json` 覆盖 `DEFAULT_CFG` 任意键（5 秒生效，不用重启）；不建则用默认值
+- 文档：README 亮点补「工具输出在入口瘦一次」；`tg-context` 明确区分 `compaction`（整段前缀重算）与本机制
+- 停用：`profiles/desktop/package.json` 移除 `dsh-plugin-save-token` 依赖与 bundle 行（备份
+  `package.json.bak-20261025-165305`），包体留在 node_modules 便于回滚
+
+## v0.14.4 — 2026-10-25（交接卡第二轮：目标取首条、「做到哪」降格为「最后一句」）
+
+两路独立审查（评审 10 条 + 对抗审 5 条，含 130 个真实会话实测）打回的硬伤，逐条改：
+
+- **目标改成取首条真人输入**：末条 32%（24/74）是「继续」「可以」「1,2」这类按语，顶上去等于没交接；
+  末条另立一行「最近指令」，说明上一轮是不是按语。压缩会话（`compact-checkpoint`）人工输入被过滤时，
+  退到 `session/title`（LLM 生成的会话名），实测 5 个压缩会话从「结束本轮对话…」回到真实任务
+- **「做到哪」降格为「最后一句」**：最后一条助手文本只证明最后说了什么，不证明进度——本会话实测压出来的
+  是 `` ``` ══ 第 1/8 轮 ══ `` 这种框线。现在先剥围栏、跳过纯表格/框线（词字符 ≥12 且占比 ≥35% 才收），
+  再按句读压到 160 字；进度仍要人填
+- **截断不再越界**：`[:80]+"…"` 会产出 81 字（74 张卡里 70 张踩到），改 `[:limit-1]`；西文标点仅在
+  其后是空格/结尾时才算句读，否则会把 `00-card.md` 切成 `00-card.`
+- **片段来源不再说谎**：来源按「本会话是否有代码改动」判——旧版按取到那段扩展名判，40 个会话里 5 个
+  明明改过 `.js/.py` 却写「无代码改动」；片段选择去掉「最后 8 个候选」窗口（长会话末段全是文档时永远取不到代码）
+- **临时路径判据放宽**：`(?i)(^|[\/_.-])(tmp|temp)([\/_.-]|$)`——`_tmp_probe.py`、`Tmp/` 都算临时，
+  `template.py` 不误伤；围栏长度改为「最长反引号 +1」，正文含四反引号也不再被截断
+- **路径归一化改 `os.path.normcase`**：原来一律小写，POSIX 上 `a/B` 与 `a/b` 会被并成一个
+- 测试 143 → 147：新增「目标取首条 / 最近指令 / 80·160 上限 / 临时脚手架不入片段 / `--if-absent` 不覆盖 /
+  content 为字符串的日志变体」
+
+## v0.14.3 — 2026-10-25（交接卡：把「状态」从占位改成自动）
+
+- 卡片头一行补回**会话 id**（`> 会话 <id> · 轮/步/¥/ctx · 时间`）：旧版只有对话夹名，接手者拿不回原日志
+- 「状态」不再两行空占位：
+  - **目标**＝最后一条真人用户输入的首行（≤80 字）。只认 `source.kind=user`；宿主注入的 system-reminder /
+    时间快照 / 技能目录不算，老日志无 `source` 时用「首字符不是 `<`」兜底——这条不兜底就会把技能目录当目标
+  - **做到哪**＝最后一条助手文本（只取 `type=text` 块，压成一行 ≤160 字，超长带 `…`）
+  - 取不到写「（无）」，不空着
+- 「关键片段」标来源：`最后一次代码改动` / `无代码改动，取最后写入的文本`；`tmp/` 下的脚手架一律跳过
+  （旧版会把 `tmp/make_usage_docx.py` 当交接重点）
+- 测试 140 → 143：交接卡三条（会话 id / 目标自动填且不认注入 / 片段标来源）+ 新夹具
+  `tests/fixtures/handoff_session.jsonl`；`handoff.py` 并入「坏配置必须报错」遍历（此前漏测）
+
+## v0.14.2 — 2026-10-24（第二轮：只装技能能降级、CI 补 3.13/3.14、计价兜底可观测）
+- **计价兜底不再静默**（换模型时最危险的错数来源）：`price_for` 返回命中方式（exact/short/contains/default），
+  `ledger.py` 把 `pricing.matched` / `pricing.unmatched` / `pricing.estimated` 写进账本，`ingest` 的人读输出
+  直接列出「哪些模型不在价表、按 default 折算了多少次」；`cost_summary` 末尾加「含估算」脚注，`--json` 带
+  `estimated`。本机真账本第一次跑就抓到 `unknown:unknown`（8 次）——在此之前完全静默
+- `env_check` 新增 `[信息] pricing`：报「用哪套价、几个模型、汇率与 asOf、日按哪个时区切」；没有价表时
+  提示「ledger.py 会用内置 deepseek 价，换模型时钱会算错」
+- **只装技能的降级**：`tg-router` 加「先认安装形态」（`ls scripts/tg_common.py` → `NO-SCRIPTS`），
+  形态 B（只有 `skills/`，技能市场常见）三条处置：只用方法论、明确告知补仓库、**禁止编造没跑过的数**；
+  README 加同名小节
+- **CI**：matrix 扩到 3.10 / 3.12 / 3.13 / 3.14；新增 `py314-windows` job **故意不装 zstandard**，
+  守住 v0.14.1 修的那个「门禁比实现严」；`tests/compress()` 同步支持 3.14 内建压缩
+  （否则夹具造不出来，大批用例会静默 SKIP，看起来还是绿的）
+- **测试**：新增「中文用户名下 `~` 展开」（Windows 走 USERPROFILE）；修「无 HOME 时 ~ 展不开」用例的
+  环境依赖——宿主注入 `DSH_HOME` 时前提不成立，用例会随「跑在哪个 shell 里」时红时绿，现在一并清掉
+- 测试 136 → 137
+
+## v0.14.1 — 2026-10-24（换机器可用性：口径统一 + 探测补上）
+- 修「门禁比实现严」：`env_check` 曾只认 `zstd` 命令与 `zstandard` 模块，漏掉 Python ≥3.14 的内建
+  `compression.zstd`。在「3.14 + 没装 zstandard + 没有 zstd 命令」的机器上判「必需项缺失、退出码 1」，
+  而所有看账脚本其实都能解压（实测同环境解 1.5 MB 会话成功，`env_check` 却判缺）。现在
+  `tg_common.unzip_channels()` 是唯一判据，`env_check` 与 `decompress_bytes` 共用，
+  三条通道（命令 / 内建 / 模块）按序降级
+- 修解压实现副本漂移：`retry_patterns.py` 自带的那份没有内建通道、没有假模块保护，导致同一台机器上
+  「别的脚本能跑、它自己说解压器缺失」。改为复用 `tg_common.decompress_bytes`
+- 新增 `scripts/detect_home.py`：桌面版 home 由安装位置决定（可在任意盘任意目录），默认猜 `~/.dsh`
+  在别人机器上会安静指向空目录 → 报「没有数据」。探测顺序：显式参数 → `$DSH_HOME` → config →
+  桌面版指针文件 `<app>/home/*location*.json` → 标准位置 → 名称含 dsh 的目录；按结构证据打分
+  （sessions 里有 `session*.jsonl*` 得分最高），输出可直接粘贴的 `dsh_home:` 片段；只读，不改文件
+- 补 `audit_pack` 的漏检：扫描面加入 `.mjs/.js/.cmd/.sh/.ps1/.json`（`verify_guard.mjs` 里写死的
+  本机路径因此长期未被发现）；绝对路径正则补正斜杠形式（旧写法只认反斜杠）；`.gitignore` 里声明
+  不发布的 `config.yaml` / `data/ledger.json*` / `_local/` 不再计入告警
+- `verify_guard.mjs` 去掉写死的上游路径：按 `TG_UPSTREAM` → config 的 `dsh_home` → `$DSH_HOME` →
+  用户目录 找上游，找不到就明说「跳过」而不是静默通过；本机长期「跳过」的哈希比对恢复成真比对
+- 文档：`benchmark.md` / `operations.md` 的示例路径改为通用写法（不再出现本机目录）；
+  README 徽章与 `data/counts.json` 同步（脚本 24→25、测试 132→136）
+- 测试 132 → 136：env_check 与 tg_common 口径一致、假 zstandard 在内建通道下不误判、
+  `retry_patterns` 不再自带解压副本、`verify_guard` 不含盘符绝对路径、`detect_home` 靠指针文件命中、
+  `audit_pack` 能抓 `.mjs` 里的正斜杠绝对路径
+
+## v0.14.0 — 2026-10-24（账本 v2：记账的写方从插件换成自己的脚本）
+- 新增 `scripts/ledger.py`：从会话日志（`assistant/message.data.usage`）派生日 / 模型 / 会话三级成本，
+  写 `data/ledger.json`。`ingest` 幂等（按文件 size+mtime 缓存解析结果，全量 107 份日志 3.6 s，二次 0.2 s）、
+  `--rebuild` 全量重算、`report --by day|model|session`、`day`、`verify`（校验「模型合计 / 会话合计 / 总量」自洽）
+- 背景：`dsh-cost-meter` 插件 2026-10-24 两套 home 全卸载（旧账本 10 天留档在 `D:\AI\_backups\cost-meter-removed-20261024`），
+  记账不能跟着插件一起消失 → 改为「日志是源，账本是派生缓存」，换机器/换 home 只要日志在就能重算
+- 口径写死并注明：`input/cacheWrite → cacheMiss`、`cacheRead → cacheHit`、`output → output`，USD/百万 token × `fx.usdToCny`；
+  **峰谷默认关闭**——拿旧账本校验发现 10-22 / 10-24 与「无峰谷」重算零差异，10-21 / 10-23 却多出 1.42× / 1.44×，
+  旧插件的峰谷判定复现不出来，与其抄一个算不准的规则，不如关掉并留着可配置
+- `tg_common` 两处补强：`decompress_bytes` 增加 Python ≥3.14 内建 `compression.zstd` 分支（本机 3.14.6 不装
+  `zstandard` 也能解日志）；新增 `ledger_paths(cfg, base, homes)`，统一「新账本优先、旧插件路径兜底」
+- 下游兼容：`cost_summary` / `cache_audit` / `env_check` 改读 `ledger_paths`，新账本沿用
+  `days[date].{calls,input,cacheRead,cacheWrite,output,costCny,byProviderModel}` 旧字段，所以报告无需改口径；
+  两套账本同时存在时只认 `schema=tg-ledger/2`，避免同一笔钱算两遍
+- 测试 126 → 132：账本派生、计价手算、重复 ingest 幂等、`verify` 自洽、`cost_summary` 读新账本，
+  另把「假 zstandard 模块」用例改成按 Python 版本分流（3.14+ 走内建解压，期望值反过来）
+- 文档：新增 `docs/ledger-v2.md`（schema 字段表、口径、校验方法与已知差异）
+
 ## v0.13.1 — 2026-10-24（首次上手成一条可跑的门禁）
 - 新增 `tests/first_run.py`：模拟「刚 clone、机器上没有 DSH 数据」的前十分钟，按安装段的顺序跑
   `env_check → preflight → doctor → cost_summary → baseline → patch_snapshot → install_guard → new_session → check_yaml → audit_pack`，

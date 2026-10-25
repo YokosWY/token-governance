@@ -20,8 +20,11 @@ description: "tg 子技能 · token 成本审计：按真实计费对账、按�
 
 | 文件 | 内容 |
 |---|---|
-| `${DSH_HOME}/storages/cost-meter/ledger.json` | 真实计费：按天 / provider:model / 会话 |
-| `${DSH_HOME}/sessions/<cwd>/session-*/session.v4.jsonl.zstd` | 逐 step usage + 内容，用于归因 |
+| `${TG}/data/ledger.json`（`config.yaml` 的 `ledger.path`） | 派生账本：按天 / provider:model / 会话（2026-10-24 起） |
+| `${DSH_HOME}/storages/cost-meter/ledger.json` | 旧插件账本（已卸载；仅迁移期兜底，新账本存在时不读） |
+| `${DSH_HOME}/sessions/<cwd>/session-*/session.v4.jsonl.zstd` | 逐 step usage + 内容，用于归因；也是新账本的唯一数据源 |
+
+账本没有就自己生成，别退回「没法算」：`python scripts/ledger.py ingest`（幂等，二次全命缓存 0.2 s），口径与校验见 `docs/ledger-v2.md`。
 
 多套 DSH → 分别跑，再合并（同一份 ledger 按真实路径只算一次）。
 

@@ -188,10 +188,34 @@
 
 > 安全合规（密钥、脱敏、上传门禁）不在本包内：那属于各人的本地约束，不随包分发。
 
-### D. 上架检查清单
+## I · 换机器实测：设想的问题里哪些被证实过
 
-- [ ] `grep -rn "D:\\" skills/` 应为 0 命中
-- [ ] `grep -rn "<你的用户名>\|<你的主机名>" skills/ docs/ README.md` 应为 0 命中
+下面每一条都在本机复现过（Windows 11 / Python 3.14.6），不是推演；改动据此定判据。
+
+| # | 现象 | 怎么复现 | 结论与现在的行为 |
+|---|---|---|---|
+| 1 | 自检说缺解压器，脚本却跑得动 | 去掉 PATH 里的 `zstd`，再用假 `zstandard.py` 让 import 失败 | v0.14.1 前 `env_check` 判「必需项缺失、退出码 1」，而 `decompress_bytes` 走 Python 3.14 内建 `compression.zstd` 成功解出 1.5 MB 会话。**门禁比实现严**，用户被指去装用不到的包。现在两者同用 `unzip_channels()` |
+| 2 | 同一包里脚本互相矛盾 | 同一环境分别跑 `baseline.py` 与 `retry_patterns.py` | 后者自带一份旧解压实现（没有内建通道），会说「解压需要二选一」。现在统一走 `tg_common` |
+| 3 | 默认 `~/.dsh` 猜错 → 报「没有数据」 | 三套 home 并存：安装目录、`安装目录/home`、`%APPDATA%/<产品>/home`（后者只有一个 `desktop-next-location.json` 指针） | `detect_home.py` 读指针文件并按结构证据打分；无 config 时也能命中真实 home |
+| 4 | 照抄 README 的安装命令写错位置 | PowerShell 里 `$DSH_HOME` 为空 → 命令变成 `cp -r skills/tg-* "/skills/"` | README 已给 PowerShell 版（`$env:DSH_HOME` / `Copy-Item -Recurse`） |
+| 5 | macOS / Linux 第一步 command not found | 文档命令全是 `python ...`，`python3` 一次都没出现 | README 顶部与安装段已说明两者对应关系 |
+| 6 | 写死的本机路径逃过自检 | `scripts/verify_guard.mjs` 里写死的上游路径（盘符 + 本机目录名） | 旧 `audit_pack` 只扫 `.md/.py/.yaml/.yml`，且正则只认反斜杠 → 长期漏检。现在扫 `.mjs/.js/.cmd/.sh/.ps1/.json`，正反斜杠都认 |
+| 7 | 只装 `skills/` 时，SKILL.md 里所有 `python scripts/*.py` 全失效 | 把 `scripts/` 挪走，再按 SKILL.md 的指引执行 | 现在 `tg-router` 先跑 `ls scripts/tg_common.py` 判形态；形态 B 只讲口径、明确要求补仓库、**禁止给没跑过的数** |
+| 8 | 换模型后静默按默认价算钱 | 用 `anthropic:claude-sonnet-4`、`gpt-5.1` 这类名字过 `price_for` | 都落到 `default`（DeepSeek 价），报告却看起来完全正常。现在账本记 `pricing.unmatched`，`ingest` 与 `cost_summary` 都报「含估算」；本机真账本抓到 `unknown:unknown` 8 次（此前完全静默） |
+| 9 | CI 只测 3.10/3.12，3.13/3.14 的行为没人守 | v0.14.1 的门禁 bug 只有本机 3.14 暴露，CI 一直全绿 | matrix 扩到 3.10/3.12/3.13/3.14，另加 `py314-windows` job **故意不装 zstandard**，专守内建解压这一支 |
+
+**没被证实但仍需防**：企业网关下的单价缺失、只读目录（公司机）、无网络环境（CI 永远能 `pip install`）、
+中文用户名下的第三方工具（本包自身已有用例覆盖，但 `pwsh`/`zstd` 之类外部程序的行为未测）。
+这几条按 §A/§G 的降级路径处理，不假装已验证。
+
+---
+
+## 附2：上架检查清单（现状）
+
+- [ ] `python scripts/audit_pack.py` 0 条告警（已自动覆盖：盘符绝对路径、本机用户名、
+  `.gitignore` 外的本机文件、frontmatter、交叉引用、徽章与计数漂移）
+- [ ] `python tests/run_tests.py` 全过（平台相关用例在用例内分流，跳过而不是失败）
 - [ ] 每个 SKILL.md 的 description ≤ 200 字符
-- [ ] `python scripts/cost_summary.py --config config.example.yaml` 能跑（示例路径不存在时应给出清晰报错，而不是崩栈）
+- [ ] 全新目录 + 空 `~` 下跑 `python tests/first_run.py`（10 步内不崩、退出码符合文档）
+- [ ] `python scripts/cost_summary.py --config config.example.yaml` 能跑（示例路径不存在时给清晰报错，不崩栈）
 

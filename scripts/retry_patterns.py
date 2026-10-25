@@ -14,7 +14,7 @@
 import argparse, json, os, re, subprocess, sys, time
 from collections import Counter, defaultdict
 
-from tg_common import load_config, resolve_dsh_home, sessions_root, utf8_stdio
+from tg_common import decompress_bytes, load_config, resolve_dsh_home, sessions_root, utf8_stdio
 
 utf8_stdio()
 
@@ -29,28 +29,9 @@ def is_failure(text):
     return (text or "").lstrip().startswith(FAIL_HEAD)
 
 
-def decompress(path):
-    try:
-        r = subprocess.run(["zstd", "-dc", path], capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            return r.stdout
-    except FileNotFoundError:
-        pass
-    try:
-        import zstandard as zstd
-    except ImportError:
-        sys.exit("解压需要二选一：`zstd` 命令或 `pip install zstandard`。")
-    with open(path, "rb") as f:
-        data = f.read()
-    dctx = zstd.ZstdDecompressor()
-    out = []
-    while data:
-        dobj = dctx.decompressobj()
-        out.append(dobj.decompress(data))
-        if not dobj.eof:
-            break
-        data = dobj.unused_data
-    return b"".join(out)
+# 解压一律走 tg_common：本文件曾自带一份（只认 zstd 命令与 zstandard，没有 3.14 内建通道），
+# 于是同一台机器上「别的脚本能跑、这个脚本说解压器缺失」——同一个包两套判据，最难排查。
+decompress = decompress_bytes
 
 
 def events(path):

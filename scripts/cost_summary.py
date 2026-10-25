@@ -7,22 +7,22 @@
 """
 import argparse, json, os, sys, datetime
 
-from tg_common import add_common_args, emit_json, expand, load_config, resolve_dsh_homes, utf8_stdio
+from tg_common import (add_common_args, emit_json, expand, ledger_paths, load_config,
+                       resolve_dsh_homes, utf8_stdio)
 
 # Windows 控制台默认 GBK：固定 UTF-8，避免中文报告/JSON 在无 PYTHONIOENCODING 的环境里乱码或崩。
 utf8_stdio()
 
 
-def read_ledger(home):
-    p = os.path.join(home, "storages", "cost-meter", "ledger.json")
-    if not os.path.isfile(p):
-        return None, p
+def read_ledger(path):
+    if not os.path.isfile(path):
+        return None, path
     try:
-        with open(p, encoding="utf-8") as f:
-            return json.load(f), p
+        with open(path, encoding="utf-8") as f:
+            return json.load(f), path
     except (json.JSONDecodeError, UnicodeDecodeError):
-        print(f"[skip] ledger 读不出来（可能正在写，稍后重跑）: {p}", file=sys.stderr)
-        return None, p
+        print(f"[skip] ledger 读不出来（可能正在写，稍后重跑）: {path}", file=sys.stderr)
+        return None, path
 
 def summarize(days, n):
     keys = sorted(days)[-n:]
@@ -58,9 +58,16 @@ def main():
     cfg, base = load_config(a.config, strict=True)
     homes = resolve_dsh_homes(a.dsh_home, cfg=cfg, base=base)
     merged, found, seen = {}, [], set()
-    for h in homes:
-        home = expand(h, base)
-        led, p = read_ledger(home)
+    estimated = []          # 价表没覆盖到、被按 default 折算的模型（钱数只能当量级看）
+    paths = [p for p in dict.fromkeys(ledger_paths(cfg, base, homes)) if os.path.isfile(p)]
+    # 新账本（ledger.py 派生）与旧插件账本可能同时存在：只认新账本，避免同一笔钱算两遍
+    new_schema = []
+    for p in paths:
+        led, _ = read_ledger(p)
+        if led and str(led.get("schema", "")).startswith("tg-ledger"):
+            new_schema.append(p)
+    for p in (new_schema or paths):
+        led, _ = read_ledger(p)
         if led is None:
             print(f"[skip] 没有 ledger: {p}", file=sys.stderr)
             continue
@@ -70,6 +77,10 @@ def main():
             continue
         seen.add(real)
         found.append(p)
+        for u in ((led.get("pricing") or {}).get("unmatched") or []):
+            tag = f"{u.get('provider') or '?'}:{u.get('model') or '?'}（{u.get('calls') or 0} 次）"
+            if tag not in estimated:
+                estimated.append(tag)
         for k, v in (led.get("days") or {}).items():
             tgt = merged.setdefault(k, {"date": k, "input": 0, "cacheRead": 0, "cacheWrite": 0,
                                         "output": 0, "calls": 0, "costCny": 0.0, "byProviderModel": {}})
@@ -81,9 +92,9 @@ def main():
                 for f in ("calls", "input", "cacheRead", "cacheWrite", "output"):
                     dst[f] += int(mv.get(f) or 0)
     if not merged:
-        tried = "\n".join(f"  {expand(h, base)}/storages/cost-meter/ledger.json" for h in homes)
+        tried = "\n".join("  " + p for p in ledger_paths(cfg, base, homes))
         sys.exit("没有可读的 ledger，查过：\n" + tried +
-                 "\n刚装好的环境属正常：cost-meter 要记过几次调用才有账本，先用一天再看。"
+                 "\n2026-10-24 起账本由会话日志派生：python scripts/ledger.py ingest"
                  "\n长期没有就改 config 里的 dsh_home。")
 
     rows, tok, models = summarize(merged, a.days)
@@ -100,6 +111,7 @@ def main():
             "cny_per_call": round(tok["cny"] / tok["calls"], 4) if tok["calls"] else 0,
         },
         "models": sorted(models.items(), key=lambda kv: -kv[1]["tokens"])[:10],
+        "estimated": estimated,
     }
     if a.json:
         emit_json(out); return
@@ -115,6 +127,12 @@ def main():
     print("\n通道（按 token）")
     for m, v in out["models"][:5]:
         print(f"  {m:45s} {v['calls']:6d} 次  {v['tokens']/1e6:9.0f} M")
+    if estimated:
+        more = "…" if len(estimated) > 3 else ""
+        print(f"\n! 含估算：{len(estimated)} 个模型不在价表里，按 default 价折算"
+              f"（{'、'.join(estimated[:3])}{more}）")
+        print("  这些次数算出来的钱只能当量级看；把真实单价填进 config.yaml 的 "
+              "ledger.prices.models，再跑 ledger.py ingest --rebuild")
 
 if __name__ == "__main__":
     main()
