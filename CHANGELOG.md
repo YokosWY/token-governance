@@ -3,6 +3,11 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.0.1 — 2026-10-25（新增上手手册；修 3 处过期描述）
+
+- 新文档 `docs/getting-started.md`：面向第一次用的人——适用判断 → 装完四步（`env_check` / `detect_home` / `config` / `preflight`）→ 三条日常命令（`doctor` / `cost_summary` / `turn_cost`）→ 归因四件套 → 技能路由 → 改配置与回滚 → 常见问题 → 一页速查。README「文档」段置顶链接。
+- 修 README 过期描述：安装段「账本由 cost-meter 记」→ `ledger.py` 从日志派生（`dsh-cost-meter` 已于 v0.14.0 卸载）；「脚本（25 个）」→ **26**；「十二条原理」→ **十三条**；已知边界里的 cost-meter 账本同步改。
+- `config.example.yaml` 的 schema 参考值 174 个 / 154 KB → **142 个 / 122.7 KB**（2026-10-25 实测）。
 ## v1.0.0 — 2026-10-25（版本号转 1.0；README 计数校正）
 
 - 版本语义：接口冻结，之后按 1.x 递增。功能与 v0.14.8 完全相同，无行为变更。

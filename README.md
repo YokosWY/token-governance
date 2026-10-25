@@ -6,7 +6,7 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.0.0-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.0.1-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-26-6B6A66?style=flat-square">
 <img alt="tests" src="https://img.shields.io/badge/tests-152-2f6f4f?style=flat-square">
@@ -120,7 +120,7 @@ Copy-Item config.example.yaml config.yaml
 python scripts\preflight.py --config config.yaml
 ```
 
-装好先正常用一天。账本由 cost-meter 记；空环境跑体检会提示「没有可读的 ledger」并退出码 1，属正常：
+装好先正常用一天。账本由 `ledger.py` 从会话日志派生（`data/ledger.json`），先跑一次 `python scripts/ledger.py ingest`；空环境跑体检会提示「没有可读的 ledger」并退出码 1，属正常：
 
 ```bash
 python scripts/cost_summary.py --config config.yaml --days 3
@@ -171,7 +171,7 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（25 个）
+### 脚本（26 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
@@ -291,7 +291,7 @@ loop_guard:
 ## 已知边界
 
 - **跨客户端不保证**：Claude Code、Codex、Cursor 没有 preset 机制，高费工具隔离得改走子代理，见 `docs/adaptation.md`。
-- **脚本只认 DSH**：`measure_modules.py` 读 DSH v4 会话日志，`cost_summary.py` 读 cost-meter 账本；换客户端只有方法能搬。
+- **脚本只认 DSH**：`measure_modules.py` 读 DSH v4 会话日志，`cost_summary.py` 读 `ledger.py` 派生的账本；换客户端只有方法能搬。
 - **补丁不随包**：工具裁剪、pruner、压缩阈值在各机器自己的 `cordis.patch.yml`，复制技能不会降低账单。
 - **覆盖块是快照**：组合配置每次启动重写，升级后要重跑 `gen_preset_override.py`。
 - **不看账本不下结论**：schema 变小、命中率上升都只是过程量。
@@ -316,8 +316,9 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 ## 文档
 
+- [`docs/getting-started.md`](docs/getting-started.md)：新用户上手：四步装好、三条日常命令、技能路由、改配置与回滚、常见问题
 - [`docs/benchmark.md`](docs/benchmark.md)：实测方法与逐会话数字；第十节是缓存命中（provider 无关）
-- [`docs/principles.md`](docs/principles.md)：十二条原理与阈值推导
+- [`docs/principles.md`](docs/principles.md)：十三条原理与阈值推导
 - [`docs/operations.md`](docs/operations.md)：循环守卫与协议纪律
 - [`docs/concepts.md`](docs/concepts.md)：自造词解释 + 六个机制
 - [`docs/adaptation.md`](docs/adaptation.md)：换机器、换客户端、没有账本时怎么降级

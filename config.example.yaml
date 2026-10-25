@@ -21,7 +21,7 @@ budget:
   weekly: null
 
 # 工具 schema 预算（KB）：超了 preflight 与 schema_budget --check 会报出来
-# 参考值：单机 174 个工具 / 154 KB；新装一个大 MCP 常一次涨 20–50 KB。0 = 关闭检查
+# 参考值：单机 142 个工具 / 122.7 KB（2026-10-25 实测）；新装一个大 MCP 常一次涨 20–50 KB。0 = 关闭检查
 schema_budget_kb: 160
 
 # 价格表（可选）：measure_modules 按 token 折算时用；ledger 有实付时以实付为准
