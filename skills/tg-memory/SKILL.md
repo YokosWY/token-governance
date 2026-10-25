@@ -18,9 +18,13 @@ description: "tg 子技能 · 会话记忆：对话夹结构、里程碑写入�
 
 ## 对话夹
 
+**一个任务一个夹**（2026-10-25 起卡绑任务，不再按会话各建一个夹）：
+
 ```
-${METRON_MEMORY}/<workspace-slug>/<session-id>/
-  00-card.md      会话卡 ≤40 行，覆盖写，唯一默认必读
+${memory_root}/<workspace>/<任务名>/
+  00-card.md      主卡 ≤40 行，覆盖写，接手第一眼看的
+  01-<sid8>.md    同任务其他会话各自的卡（一张会话一张，互不覆盖）
+  99-cards.json   索引：哪个会话在哪张卡、多少轮/步/¥（机器维护，人不用管）
   10-outline.md   大纲
   20-decisions.md 决策（追加，带日期）
   30-logs/        原始输出（正文只留路径）
@@ -29,6 +33,9 @@ ${METRON_MEMORY}/<workspace-slug>/<session-id>/
   handoff-gui.md  → GUI 区
   handoff-back.md ← GUI 区
 ```
+
+会话归属哪个任务由指针 `_local/tg-current-task.json` 决定；没绑定的会话才退化成
+`<YYYYMMDD>-auto-<sid8>/00-card.md`（临时快照，不算交接）。
 
 脚手架：`python scripts/new_session.py <workspace> <id> "标题"`（若未提供，手建 6 个空文件即可）。
 
@@ -49,15 +56,25 @@ ${METRON_MEMORY}/<workspace-slug>/<session-id>/
 
 ## 开工恢复
 
-读顺序：对应 `00-card.md` → 没有则读长期记忆库入口。
+读顺序：`00-card.md`（主卡）→ `99-cards.json` 找本会话那张 → 对应 `01-<sid8>.md` → 都没有则读长期记忆库入口。
 
 ## 切会话前：一键出卡
 
 ```bash
-python scripts/handoff.py --session <id> --slug <任务名> --if-absent
+# 首次：把本会话归到任务夹（只写指针，不出卡）
+python scripts/handoff.py --session <id> --set-task 20261025-tg-account
+# 之后：不带 --slug，自动按指针落任务夹
+python scripts/handoff.py --session <id> --if-absent
+# 没有任务/临时快照：显式给 slug，落 auto 夹
+python scripts/handoff.py --session <id> --slug tg-account
 ```
 
-- 写出 `<memory_root>/<workspace>/<YYYYMMDD>-<slug>/00-card.md`。卡片结构（2026-10-25 改版）：**一行数字 + 改过什么 + 关键片段 + 状态（目标/最近指令/最后一句/卡在哪）+ 下一步**，删掉了原来的数字表和硬约束段——那两块占了篇幅却不给接手者信息。
+- 指针文件 `_local/tg-current-task.json`，查法：精确会话 id → id 前 8 位 → `*`（本机默认任务）。
+- 任务夹里首张卡写 `00-card.md`；同任务再来一个会话写 `01-<sid8>.md`；同一会话重跑按索引写回原卡。
+- `--no-task` 忽略指针强制落 auto 夹；`--task <名>` 临时指定任务夹。
+- `--config` 缺省读脚本旁的 `../config.yaml`，所以手跑不用带路径（早前靠 cwd，在别处跑会静默落 `~/tg-memory`）。
+
+- 落点：绑了任务 → `<memory_root>/<workspace>/<任务名>/` 下首张 `00-card.md`、其后 `01-<sid8>.md`；没绑任务 → `<YYYYMMDD>-<slug>/00-card.md`。卡片结构（2026-10-25 改版）：**一行数字 + 改过什么 + 关键片段 + 状态（目标/最近指令/最后一句/卡在哪）+ 下一步**，删掉了原来的数字表和硬约束段——那两块占了篇幅却不给接手者信息。
 - **自动填的**：
   - 头一行：`会话 <id>` + 轮/步/¥/ctx + 生成时间（2026-10-25 起卡片不写「回本/净省」，那两个数只留在胶囊悬停里）。会话 id 是回原日志的唯一把手，别删。
   - 「改过什么」：从会话日志的 `tool/call` 里收 write/edit 的 file_path（`/` 与 `\` 归一化去重、按次数排序、`tmp/`+`_tmp_*` 不算重点、最多 5 条，其余折成「另有 N 个」）。

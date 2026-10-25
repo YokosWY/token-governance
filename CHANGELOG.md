@@ -3,6 +3,53 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v0.14.8 — 2026-10-25（胶囊压缩记账只认真实通知，面板露出「省」）
+
+- 修：压缩收益此前按「行内正则」统计，`read` 到的源码注释、`ops_bash` 回显的示例都被当成真压缩。
+  实测单会话虚计 83 条 / ¥0.20；另两处会话同一压缩重复计（`ca1h:50,696->16,907`）。
+- 记账改走事件：`createCompScanner` 只认 `tool/result` 结果文本末尾的整条 notice；`read` / `save_token_expand` 跳过；
+  同 id 同体积去重（key 带 before/after，防 4 位 id 碰撞误伤）。
+- 性能：记账并入主循环一次解析（原为两遍 `JSON.parse`），84 会话 p50 6.0ms（与旧实现持平），13.8MB 会话 86→32ms。
+- 面板：「输出瘦身」行露出「省 ¥X · N 次」（只算工具结果压缩，7 条输出纪律无基线不计金额）；`snapshotTrim().on` 不再写死 `true`。
+- 对账：84 个会话新账 ¥1.76 / 旧账 ¥2.44，差额逐条可归因（假阳性 + 重复），无真实压缩漏计；
+  `8ba1f7ea` 4 条 ¥0.0232 新旧一致。旧口径缓存 `_local/tg-saved.json` 已备份删除，重算后「累计」会变小。
+- 测试：`tests/notice.test.mjs` 补记账口径用例，插件 28 条在 NEXT 与官方版两端全过。
+
+## v0.14.7 — 2026-10-25（官方版并行：多 home 账目 + 胶囊双端隔离）
+
+- `config.yaml` 打开 `dsh_homes`：`D:/AI/DSH-NEXT` + `D:/AI/DSH-official/home`（官方版应急用；`~/.dsh` 是它的 junction）。
+  脚本走 `resolve_dsh_homes` 自动两端扫描，`resolve_dsh_home`（单 home 口径）仍取第一个＝NEXT，历史对比不被悄悄改口径。
+- `ledger.py`：日账新增 `byHome`（home → `{calls, costCny}`），会话行新增 `home`；`report --by home` 出两端分账。
+  实测最近 7 天 NEXT ¥100.75 / 官方版 ¥9.57，合计 ¥110.31——此前官方版完全没入账。
+- 账目胶囊（`dsh-tg-account`）去掉写死的 `D:/AI/DSH-NEXT`：改 `process.env.DSH_HOME || ~/.dsh`，
+  两端各存一份 `_local/tg-*.json`，trim 开关互不影响（原写法在官方版会把 NEXT 的账显示出来、状态也写进 NEXT）。
+- `ensureHandoff()` 调 `handoff.py` 补 `--dsh-home`：不带会去第一个 home 找会话，官方版会话找不到 → 交接卡不生成。
+- 官方版侧装独立副本（不 junction 源码）：`D:/AI/DSH-official/home/local-plugins/dsh-tg-account`，
+  profile `dependencies` + `bundles` 各一条，`node_modules/@local/dsh-tg-account` junction 指向副本。
+  版本记录更正：官方版已随 nightly 升到 **0.2.1-rc.3**（旧记录 rc.2），其 asar 实测含 `conversation.session.header.actions`（11 处）与 `webServer` prefix 路由（5 处），与 NEXT 持平。
+- 对账：官方会话 `bf5b7c30` 胶囊 ¥4.4674，`turn_cost.py --dsh-home D:/AI/DSH-official/home` 逐轮求和同为 ¥4.4674；插件 20 条测试两端各跑一遍全过。
+
+
+## v0.14.6 — 2026-10-25（胶囊加「今日」：跨会话当日消费合计）
+
+- **新增 `payload.today`**：`{ cny, others, sessions, at, stale }`。口径＝本地日内 `assistant/message` 的 usage ×
+  与「本会话消费」同一套价格（不是「今天写过的会话全量」：跨天会话只计今天那段）。
+  后台异步扫 + `_local/tg-day.json` 缓存 60 秒，按 `path+mtime` 增量复用；**扫描时跳过当前会话文件**（它每步都在变，重解析最贵），
+  由 `account()` 自己算完再加进去，所以胶囊上的「今日」每步都是最新。
+- **胶囊在「本」与「省」之间插入「· 今日 ¥X」**，悬停给「本会话 + N 个其他会话 · 按本地日切」，首次扫描没回来前显示「…」
+- 对账：独立脚本同日同口径复算 **¥6.6489**（22 个候选日志里 13 个有今日用量），插件重启后应一致
+- 修：`ensureHandoff()` 调 `handoff.py` 补 `--config`（原先漏传 → 相对路径解析不到 → 交接卡落 `~/tg-memory`，即 C 盘）；
+  `~/tg-memory` 下 8 个夹已迁到 `D:\AI\Knowledge\AI-KB\sessions\default-workspace\`
+- 修字：面板标题与注入块「词元管控」→「词元掌控」（`lib/client.js` 胶囊标题、`lib/index.js` 输出规范块首行）
+- **交接卡改绑任务夹**（`handoff.py`）：新增 `--task` / `--task-file` / `--set-task` / `--no-task`。
+  会话→任务由指针 `_local/tg-current-task.json` 决定（精确 id > sid8 > `*` 默认），
+  `--set-task` 一条命令写指针。任务夹里首张卡仍是 `00-card.md`，同任务的其他会话各写 `01-<sid8>.md`，
+  不再互相覆盖；`99-cards.json` 记「哪个会话在哪张卡」。同一会话重跑按索引写回原卡（不造分叉）。
+  未绑定任务的会话退化为 `20261025-auto-<sid8>/00-card.md`（旧行为不变）。
+- `handoff.py --config` 缺省改为脚本旁的 `../config.yaml`（不再依赖 cwd，手跑也不会误落 `~/tg-memory`）
+- 插件侧卡片定位同步三处来源：`01-<sid8>.md` → `99-cards.json` 索引 → 旧 `*-auto-<sid8>/00-card.md`，
+  取 mtime 最新；新增 `tests/card.test.mjs`（5 条）
+
 ## v0.14.5 — 2026-10-25（融合 save-token 压缩核：入口改写一次，落盘可逆，零常驻 schema）
 
 把 `dsh-plugin-save-token@2.4.1` 的核心原理并进 TG 自身（`dsh-tg-account`），随后停用该插件。
@@ -22,8 +69,12 @@
 - **账不变**：NOTICE 正则兼容 `[save-token #…]` 与 `[tg-trim #…]` 两代标记，`component` 口径继续按
   「首次按输入价 + 之后每步按缓存价」复原
 - 测试：新增 `tests/compress.test.mjs`（8 条）、`tests/hook.test.mjs`（4 条）、`tests/notice.test.mjs`（4 条），16/16 通过
-- 面板：新增「工具输出压缩省」块（历史账 + 本进程实时计数 + 最近一次放行原因悬停）；「输出规范」→「输出瘦身」，
-  总开关同时关掉规范注入与机械压缩
+- 面板：「输出规范」→「输出瘦身」，总开关同时关掉规范注入与机械压缩；压缩收益不单独成块，只留在数据层
+  （`payload.trim` / `component`）
+- **悬停改成逐模块列金额**：工具 schema / 技能目录 / 工具输出压缩 / 换会话 100 步（预测），不写合计、口径与
+  「未计入」。累计口径统一为「配置反事实 + 工具输出压缩」（`savedCur.v=4`，新增 `cfg`/`comp`/`compCount`/`spillCount`）
+- 新增可复原指标：`analyzeSession` 顺带数出 DSH 原生落盘次数（`spillCount`，21 个近期会话 55 次）；
+  该模块无法从日志还原金额，只报次数，不编钱
 - 可调阈值：`_local/tg-compress.json` 覆盖 `DEFAULT_CFG` 任意键（5 秒生效，不用重启）；不建则用默认值
 - 文档：README 亮点补「工具输出在入口瘦一次」；`tg-context` 明确区分 `compaction`（整段前缀重算）与本机制
 - 停用：`profiles/desktop/package.json` 移除 `dsh-plugin-save-token` 依赖与 bundle 行（备份

@@ -278,6 +278,8 @@ def render(meta, m):
         "## 改过什么（本会话写过的文件）",
         "",
     ]
+    if meta.get("task"):
+        lines.insert(3, f"> 任务夹 `{meta['task']}` · 本卡 `{meta.get('card') or '00-card.md'}`")
     if edits:
         for p, n in shown:
             lines.append(f"- `{p}`" + (f" ×{n}" if n > 1 else ""))
@@ -325,14 +327,100 @@ def render(meta, m):
     return "\n".join(lines)
 
 
+TASK_INDEX = "99-cards.json"
+
+
+def default_config():
+    """手跑时默认读脚本旁的 config.yaml：靠 cwd 解析会在别处静默落到 ~/tg-memory。"""
+    cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.yaml")
+    return cand if os.path.isfile(cand) else "config.yaml"
+
+
+def clean_task(name):
+    """任务夹名只能是一个目录名：挡掉分隔符与 ..，否则卡会写到别处去。"""
+    name = (name or "").strip()
+    if not name or name in (".", "..") or any(c in name for c in "/\\:"):
+        sys.exit(f"任务夹名不合法：{name!r}（只允许单层目录名）")
+    return name
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def lookup_task(path, sid):
+    """会话 → 任务夹：先精确 id，再 sid8，最后 `*`（本机默认任务）。都没有就返回空。"""
+    d = read_json(path) or {}
+    tasks = d.get("tasks") if isinstance(d, dict) else None
+    if not isinstance(tasks, dict):
+        return ""
+    for k in (sid, sid[:8], "*"):
+        v = tasks.get(k)
+        if isinstance(v, str) and v.strip():
+            return clean_task(v)
+        if isinstance(v, dict) and str(v.get("task") or "").strip():
+            return clean_task(v["task"])
+    return ""
+
+
+def set_task_pointer(path, sid, task):
+    """写指针：本会话归到哪个任务夹。人/agent 在开任务时写一次，之后手跑与插件都跟着走。"""
+    d = read_json(path)
+    if not isinstance(d, dict):
+        d = {}
+    if not isinstance(d.get("tasks"), dict):
+        d["tasks"] = {}
+    d["v"] = 1
+    d["tasks"][sid] = {"task": task, "at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
+    d["updatedAt"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+
+
+def has_session_cards(folder):
+    try:
+        return any(n.startswith("01-") and n.endswith(".md") for n in os.listdir(folder))
+    except OSError:
+        return False
+
+
+def update_index(folder, task, workspace, entry):
+    """99-cards.json：本夹里有哪些会话卡、哪张最新。不动人手写的 00-card.md。"""
+    path = os.path.join(folder, TASK_INDEX)
+    d = read_json(path)
+    if not isinstance(d, dict):
+        d = {}
+    if not isinstance(d.get("cards"), dict):
+        d["cards"] = {}
+    d.update({"v": 1, "task": task, "workspace": workspace,
+              "updatedAt": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")})
+    d["cards"][entry["session"]] = entry
+    try:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+            f.write("\n")
+    except OSError:
+        pass  # 索引写不进不影响卡片本身
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", required=True, help="会话 id 或目录片段")
-    ap.add_argument("--slug", required=True, help="对话夹名后缀，如 tg-account")
+    ap.add_argument("--slug", default="", help="对话夹名后缀，如 tg-account（未绑定任务时用）")
     ap.add_argument("--workspace", default="default-workspace")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=default_config())
     ap.add_argument("--dsh-home", default="")
     ap.add_argument("--memory-root", default="")
+    ap.add_argument("--task", default="", help="任务夹名（如 20261025-tg-account）；不给则查指针文件")
+    ap.add_argument("--task-file", default="", help="任务指针文件；缺省 <dsh_home>/_local/tg-current-task.json")
+    ap.add_argument("--set-task", default="", help="只写指针（本会话归到该任务夹），不生成卡片")
+    ap.add_argument("--no-task", action="store_true", help="忽略指针，强制落 auto-<slug> 夹")
     ap.add_argument("--print-only", action="store_true")
     ap.add_argument("--if-absent", action="store_true",
                     help="只在没有卡片时写（自动触发用这个，避免覆盖手写卡）")
@@ -346,6 +434,21 @@ def main():
     if not path:
         sys.exit(f"找不到会话：{a.session}（在 {root} 下按目录名片段匹配）")
 
+    sid = os.path.basename(os.path.dirname(path)).replace("session-", "") or os.path.basename(
+        os.path.dirname(path))[:8]
+    task_file = a.task_file or os.path.join(home, "_local", "tg-current-task.json")
+
+    # 只写指针：把本会话归到某个任务夹，供之后手跑与插件共用
+    if a.set_task:
+        task = clean_task(a.set_task)
+        set_task_pointer(task_file, sid, task)
+        print(f"任务指针：{task_file}")
+        print(f"  会话 {sid[:8]} → 任务夹 {task}")
+        return
+
+    if not a.set_task and not a.slug and not a.task and not lookup_task(task_file, sid):
+        sys.exit("要么给 --slug（落 auto-<slug> 夹），要么用 --task/指针绑定任务夹")
+
     prices = dict(DEFAULT_PRICES)
     for k, v in (cfg.get("prices_usd_per_mtok") or {}).items():
         if k in prices and isinstance(v, (int, float)):
@@ -357,15 +460,31 @@ def main():
         sys.exit("该会话没有 usage 记录")
 
     today = datetime.date.today()
-    name = f"{today:%Y%m%d}-{a.slug}"
+    task = "" if a.no_task else (clean_task(a.task) if a.task else lookup_task(task_file, sid))
+    name = task or f"{today:%Y%m%d}-{a.slug}"
     mem = a.memory_root or cfg.get("memory_root") or os.path.join(os.path.expanduser("~"), "tg-memory")
     folder = os.path.join(mem, a.workspace, name)
-    card = os.path.join(folder, "00-card.md")
 
-    sid = os.path.basename(os.path.dirname(path)).replace("session-", "") or os.path.basename(
-        os.path.dirname(path))[:8]
+    # 有任务夹：先认索引（同一会话重跑就写回同一张卡），否则夹里还没卡 → 本会话当主卡，
+    # 已有别的卡 → 写 01-<sid8>.md，绝不覆盖别人的现场
+    if task:
+        main_card = os.path.join(folder, "00-card.md")
+        own_card = os.path.join(folder, f"01-{sid[:8]}.md")
+        prev = (read_json(os.path.join(folder, TASK_INDEX)) or {}).get("cards") or {}
+        mine = str(((prev.get(sid[:8]) or {}) if isinstance(prev, dict) else {}).get("file") or "")
+        if mine == "00-card.md":
+            card = main_card
+        elif mine:
+            card = os.path.join(folder, mine)
+        elif os.path.isfile(main_card) or has_session_cards(folder):
+            card = own_card
+        else:
+            card = main_card
+    else:
+        card = os.path.join(folder, "00-card.md")
+
     meta = {"name": name, "when": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "session": sid[:8]}
+            "session": sid[:8], "task": task, "card": os.path.basename(card)}
     text = render(meta, m)
     if a.print_only:
         print(text)
@@ -379,9 +498,18 @@ def main():
         shutil.copy2(card, card + ".bak-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(card, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+    if task:
+        update_index(folder, task, a.workspace, {
+            "file": os.path.basename(card), "session": sid[:8],
+            "at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "turns": m["turns"], "steps": m["steps"], "cny": round(m["cny"], 4),
+            "n_star": m["n_star"], "ctx": m["ctx"],
+        })
     print(f"交接卡：{card}")
     print(f"  会话 {meta['session']} · {m['turns']} 轮 {m['steps']} 步 · ¥{m['cny']:.4f} · "
           f"上下文 {m['ctx']/1000:.0f}k · 回本 {m['n_star']} 步")
+    if task:
+        print(f"  任务夹：{task}（同任务多会话各一张 01-*.md，主卡仍是 00-card.md）")
     print("  下一步：补「卡在哪」与「下一步」两节（目标/做到哪/文件/片段已自动填）")
 
 

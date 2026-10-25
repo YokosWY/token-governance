@@ -977,6 +977,37 @@ def main():
     with open(keep_card, encoding="utf-8") as f:
         check("交接卡 --if-absent 不覆盖手写卡", f.read() == "手写卡\n")
 
+    # 19.6 卡绑任务夹（2026-10-25）：同任务多会话各有各的卡，主卡不被覆盖
+    tmem = os.path.join(tmp, "tmem")
+    tfile = os.path.join(tmp, "tg-current-task.json")
+    r = run("handoff.py", "--session", "ab12cd34", "--set-task", "20261025-task",
+            "--dsh-home", home, "--config", prices, "--task-file", tfile)
+    check("任务指针写入指针文件", r.returncode == 0 and os.path.isfile(tfile), (r.stdout + r.stderr)[-160:])
+    r = run("handoff.py", "--session", "ab12cd34", "--dsh-home", home, "--config", prices,
+            "--task-file", tfile, "--memory-root", tmem)
+    task_dir = os.path.join(tmem, "default-workspace", "20261025-task")
+    main_card = os.path.join(task_dir, "00-card.md")
+    check("指针命中→首张卡落任务夹 00-card.md", os.path.isfile(main_card), (r.stdout + r.stderr)[-200:])
+    # 同一会话重跑：认索引写回同一张卡，不许再造 01-ab12cd34.md 分叉
+    run("handoff.py", "--session", "ab12cd34", "--dsh-home", home, "--config", prices,
+        "--task-file", tfile, "--memory-root", tmem)
+    check("同会话重跑不另建 01-*.md",
+          not os.path.isfile(os.path.join(task_dir, "01-ab12cd34.md")))
+    # 另一个会话绑同一任务：只多一张 01-<sid8>.md，主卡内容不动
+    before = open(main_card, encoding="utf-8").read()
+    put_session(home, "session-ef56gh78", "handoff_session.jsonl", tmp)
+    r = run("handoff.py", "--session", "ef56gh78", "--task", "20261025-task", "--dsh-home", home,
+            "--config", prices, "--task-file", tfile, "--memory-root", tmem)
+    own = os.path.join(task_dir, "01-ef56gh78.md")
+    check("同任务第二会话写 01-<sid8>.md 且主卡不变",
+          os.path.isfile(own) and open(main_card, encoding="utf-8").read() == before,
+          (r.stdout + r.stderr)[-200:])
+    with open(os.path.join(task_dir, "99-cards.json"), encoding="utf-8") as f:
+        ixd = json.load(f)
+    check("任务夹索引记两张卡且指向各自文件",
+          {k: v.get("file") for k, v in ixd.get("cards", {}).items()}
+          == {"ab12cd34": "00-card.md", "ef56gh78": "01-ef56gh78.md"}, str(ixd)[:240])
+
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）
     with open(os.path.join(ROOT, "data", "counts.json"), encoding="utf-8") as f:

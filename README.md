@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v0.14.5-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v0.14.8-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-26-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-147-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-152-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-beta-f0a441?style=flat-square">
 
 </div>

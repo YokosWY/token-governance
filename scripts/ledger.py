@@ -295,7 +295,7 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
             slot = days.setdefault(day, {
                 "date": day, "calls": 0, "input": 0, "cacheRead": 0, "cacheWrite": 0,
                 "output": 0, "costUsd": 0.0, "costCny": 0.0, "peakCostCny": 0.0,
-                "byProviderModel": {}, "sessions": {},
+                "byProviderModel": {}, "byHome": {}, "sessions": {},
             })
             key = f"{provider}:{model}"
             row, how = price_for(prices, model)
@@ -315,6 +315,9 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
             slot["output"] += o
             slot["costUsd"] += usd
             slot["costCny"] += cny
+            hb = slot["byHome"].setdefault(home, {"calls": 0, "costCny": 0.0})
+            hb["calls"] += 1
+            hb["costCny"] += cny
             if peak:
                 slot["peakCostCny"] += cny
             pm = slot["byProviderModel"].setdefault(key, {
@@ -330,6 +333,7 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
             sid = meta.get("id") or "unknown"
             ss = slot["sessions"].setdefault(sid, {
                 "origin": meta.get("origin") or "main", "parent": meta.get("parent") or "",
+                "home": home,
                 "cwd": meta.get("cwd") or "", "title": meta.get("title") or "",
                 "calls": 0, "costCny": 0.0, "firstAt": ts, "lastAt": ts})
             ss["calls"] += 1
@@ -359,6 +363,8 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
                 pm[k] = round(pm[k], 6)
         for ss in day["sessions"].values():
             ss["costCny"] = round(ss["costCny"], 6)
+        for hb in day["byHome"].values():
+            hb["costCny"] = round(hb["costCny"], 6)
 
     ordered = {k: days[k] for k in sorted(days)}
     ordered_keys = list(ordered)
@@ -429,6 +435,18 @@ def fmt_int(n):
     return f"{n:,}"
 
 
+def short_home(home):
+    """home 只留末两段（DSH-NEXT / DSH-official/home），报告里够认、又不啰嗦。"""
+    h = str(home).replace("\\", "/")
+    for tag, label in (("DSH-official", "官方版"), ("DSH-NEXT", "NEXT")):
+        if tag in h:
+            return label
+    parts = [x for x in h.split("/") if x]
+    if len(parts) >= 2:
+        return "/".join(parts[-2:])
+    return parts[-1] if parts else str(home)
+
+
 def pct(part, whole):
     return f"{part / whole * 100:.1f}%" if whole else "-"
 
@@ -448,6 +466,15 @@ def cmd_report(ledger, args):
                 slot["tokens"] += v["input"] + v["cacheRead"] + v["cacheWrite"] + v["output"]
                 slot["costCny"] += v["costCny"]
         rows = [{"key": n, **v} for n, v in sorted(agg.items(), key=lambda x: -x[1]["costCny"])]
+    elif by == "home":
+        agg = {}
+        for k in keys:
+            for home, v in (days[k].get("byHome") or {}).items():
+                slot = agg.setdefault(home, {"calls": 0, "costCny": 0.0})
+                slot["calls"] += v.get("calls", 0)
+                slot["costCny"] += v.get("costCny", 0.0)
+        rows = [{"key": short_home(h), "home": h, **v}
+                for h, v in sorted(agg.items(), key=lambda x: -x[1]["costCny"])]
     elif by == "session":
         agg = {}
         for k in keys:
@@ -470,7 +497,7 @@ def cmd_report(ledger, args):
         emit_json({"by": by, "days": args.days, "rows": rows})
         return
 
-    print(f"TG 账本 · 最近 {len(keys)} 天（{keys[0]} → {keys[-1]}）· 按{ {'day': '天', 'model': '模型', 'session': '会话'}[by] }\n")
+    print(f"TG 账本 · 最近 {len(keys)} 天（{keys[0]} → {keys[-1]}）· 按{ {'day': '天', 'model': '模型', 'session': '会话', 'home': ' home'}[by] }\n")
     if by == "day":
         print(f"{'日期':<12}{'¥':>9}{'调用':>7}{'tokens':>16}{'缓存命中率':>11}")
         for r in rows:
@@ -479,6 +506,11 @@ def cmd_report(ledger, args):
         tot = sum(r['costCny'] for r in rows)
         print(f"{'合计':<12}{tot:>9.2f}{sum(r['calls'] for r in rows):>7}"
               f"{fmt_int(sum(r['tokens'] for r in rows)):>16}")
+    elif by == "home":
+        print(f"{'home':<34}{'¥':>9}{'调用':>8}")
+        for r in rows:
+            print(f"{r['key']:<34}{r['costCny']:>9.2f}{r['calls']:>8}")
+        print(f"{'合计':<34}{sum(r['costCny'] for r in rows):>9.2f}{sum(r['calls'] for r in rows):>8}")
     elif by == "model":
         print(f"{'provider:model':<44}{'¥':>9}{'调用':>8}{'tokens':>15}")
         for r in rows:
@@ -561,7 +593,7 @@ def main():
     rep = sub.add_parser("report", help="按天/模型/会话汇总")
     add_common_args(rep, json_flag=True)
     rep.add_argument("--days", type=int, default=7)
-    rep.add_argument("--by", choices=["day", "model", "session"], default="day")
+    rep.add_argument("--by", choices=["day", "model", "session", "home"], default="day")
     rep.add_argument("--top", type=int, default=15)
 
     one = sub.add_parser("day", help="单日明细")
