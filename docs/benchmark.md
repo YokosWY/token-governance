@@ -229,6 +229,8 @@ python scripts/measure_modules.py --session f7a82a7e --dsh-home ~/.dsh --cf-sche
 
 <!-- metrics:end -->
 
+> **2026-10-25 复测**（MCP 隔离、技能增装之后，同一台机器）：工具 142 个 / schema 122.7 kB（较上表「改后」再降 20%）；技能目录单条 12.4 kB（技能装多了，单条反升 29%）；本会话起始上下文 44.7 k；近 7 天未命中 2,101/步、命中率 99.1%。每轮成本随任务构成波动（近 3 天中位 ¥0.0753，含开发调试），不与上表直接比。自查用 `python scripts/doctor.py --days 7`。
+
 ---
 
 ## 十、缓存命中：不依赖具体客户端的做法
