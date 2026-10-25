@@ -40,7 +40,9 @@ ls scripts/tg_common.py 2>/dev/null || echo NO-SCRIPTS
 
 ## 开始前
 
-读 `config.yaml`（与技能同级或项目根）。没有就用默认：`dsh_home=~/.dsh`、`memory_root=~/tg-memory`。
+读 `config.yaml`（与技能同级或项目根）。没有就用默认：`dsh_home=~/.dsh`。
+`memory_root` **没有默认值**：没配就问宿主放哪（`python scripts/setup.py`，建议 `~/Documents/tg-memory`）；
+无人值守时给 `--memory-root <路径>` 或环境变量 `TG_MEMORY_ROOT`（v1.0.2 起不再静默落 `~/tg-memory`）。
 下文 `${DSH_HOME}` / `${TG_MEMORY}` 均指配置里的值。
 跑脚本时 `dsh_home` 的解析顺序是 `--dsh-home` > config > `$DSH_HOME` > `~/.dsh`（实现只有一处：`scripts/tg_common.py`；装了两套客户端时先确认读的是哪一份）。
 
