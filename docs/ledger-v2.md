@@ -55,6 +55,50 @@ cost_cny = cost_usd × fx.usdToCny
 「日」按 `ledger.timezone` 切（默认 `Asia/Shanghai`）。Windows 上 Python 常缺 `tzdata`，
 `Asia/Shanghai` 这类无夏令时时区会自动退到固定 +08:00，`ledger.timezone` 字段会写成 `Asia/Shanghai(fixed)`。
 
+## 多模型计价（2026-10-26 起，不再局限于 DeepSeek）
+
+「一套价算所有模型」是账本最危险的错数来源：`deepseek-v4-pro` 按 flash 价会低报 4.4 倍，
+免费通道按付费价会虚高 100%（`deepseek-v4.1-flash-free` 当初就是被 `deepseek-v4.1-flash`
+的「包含」匹配吃掉的）。现在的解析顺序（`ledger.py` 与 DSH 胶囊两端同一套语义）：
+
+| 顺序 | 规则 | 命中方式 | 钱 |
+|---|---|---|---|
+| 1 | `provider:model` 全名在 `models` 里 | `exact` | 该价 |
+| 2 | `model` 在 `models` 里 | `model` | 该价 |
+| 3 | 免费：名单（含 DSH 免费模型目录自动并入）／后缀 `-free`、`:free`／通配 `*/free` | `free` | **¥0**，tokens 照记 |
+| 4 | `provider` 或 `model` 是 `unknown`（日志缺 source，如标题生成） | `missing-source` | `default` 价 |
+| 5 | `providers.<p>.default` 显式配了 | `provider-default` | 该默认价 |
+| 6 | 家族前缀（整词边界，`deepseek-v4-pro-2027` 认，`deepseek-v4-proX` 不认） | `family` | 该家族价 |
+| 7 | 其它 | `unpriced` | **记 ¥0**，tokens 与次数单列报出来 |
+
+两条硬规矩：
+
+- **未定价绝不折 default**。以前一律按 DeepSeek 价折算，数字看着正常、其实套错了价；现在
+  `pricing.unpriced` 单列清单，`report` 末尾提示「含 N 次未定价调用」，胶囊显示橙色「未定价」。
+- **峰时价只对声明了 `peak` 的模型生效**。没写就没有峰谷概念，不再默认 ×2（别家的峰谷窗口跟
+  DeepSeek 不是一回事）。
+
+免费名单从哪来：`ledger.prices.free.catalogs` 指向 DSH 的免费模型目录
+（`<DSH_HOME>/our-free-model/catalog.json`），导出时把 `entries` 与含 `free` 的 `kiloRows.id`
+并入清单；目录更新后重跑 `prices export` 即可。
+
+### 价表快照 prices.json（两端一份价）
+
+`config.yaml` 仍是唯一真源；`prices export` 把它归一成 `data/prices.json`（模型价、provider
+默认价、免费规则、汇率、峰谷、指纹），DSH 胶囊直接读这个文件 —— 不在 JS 里二次解析 YAML，
+也不让两端各写一份价。
+
+```bash
+python scripts/ledger.py prices export     # 改完价必须重跑（默认 data/prices.json）
+python scripts/ledger.py prices show       # 看当前生效的价（含峰时价与免费名单）
+python scripts/ledger.py prices check      # 与日志里真实出现的 provider:model 对账
+python scripts/ledger.py prices check --strict   # 有未定价或 prices.json 过期 → 退出码 1（可进 CI）
+```
+
+`prices check` 同时做漂移检测：文件里的指纹（`sha1:…`，只由价格内容决定）与当前 config 算出
+的不一致 → 报「价表过期」。胶囊读不到 `prices.json` 时退回旧的单套价，不会更糟，但会在面板
+里显示价源为 `config.yaml 单套价`。
+
 ## 峰谷：默认关闭，原因写在数据里
 
 旧插件配置了 `peakWindows = [01–04), [06–10)` 且峰时价 ×2。用旧账本（10 天，卸载前留档）逐日校验：
@@ -109,6 +153,9 @@ byProviderModel`，所以 `cost_summary.py`、`cache_audit.py`、`doctor.py` 的
 
 - **子代理**：子代理有自己的会话文件，成本独立计入（`sessions[sid].origin = "subagent"`），不会重复计父会话。
 - **没有 source 的事件**：7 条 usage 事件缺 `message.source`（标题生成等），归到 `unknown:unknown`，价格走 `default`。
+- **未定价模型**：日志里出现但价表没登记的 `provider:model`，钱记 ¥0、tokens 与次数进
+  `pricing.unpriced`，`days[date].unpricedCalls` 可查。**这不是漏记，是明示**——比起按 DeepSeek 价
+  折算出一个看着正常的错数，宁可少记一行并报出来。
 - **损坏行**：日志尾部偶有半行（进程被杀），解析时计入 `damaged` 并跳过；不会中断整份账本。
 - **日志被清**：账本是派生缓存，日志删了，重算后那几天的数字会变小——这是事实，不是 bug。要长期留档就 `cp data/ledger.json`。
 - **旧账本同时存在**：`cost_summary` / `cache_audit` 只认 `schema=tg-ledger/2`，避免新旧两份叠加。
@@ -117,6 +164,8 @@ byProviderModel`，所以 `cost_summary.py`、`cache_audit.py`、`doctor.py` 的
 
 ```bash
 python scripts/ledger.py ingest && python scripts/ledger.py verify
+python scripts/ledger.py prices export && python scripts/ledger.py prices check
 python scripts/cost_summary.py --days 7          # 数字应与 ledger report 一致
-python tests/run_tests.py                        # 147 项，含账本 6 项
+python tests/run_tests.py                        # 167 项，含多模型计价 12 项
 ```
+

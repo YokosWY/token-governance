@@ -937,6 +937,86 @@ def main():
     check("cost_summary 读新账本", r.returncode == 0 and "2026-10-20" in (r.stdout or ""),
           (r.stdout + r.stderr)[-200:])
 
+    # 22b. 多模型计价（2026-10-26）：免费 ¥0、未定价不折 default、provider 默认价、价表导出幂等
+    phome = os.path.join(tmp, "price-home")
+    psess = os.path.join(phome, "sessions", "sess-multi")
+    os.makedirs(psess, exist_ok=True)
+
+    def pev(seq, provider, model, i, cr, o):
+        return json.dumps({"type": "assistant/message", "seq": seq, "time": ts,
+                           "data": {"turn": 1, "step": seq,
+                                    "message": {"role": "assistant",
+                                                "source": {"kind": "model",
+                                                           "provider": provider, "model": model}},
+                                    "usage": {"inputTokens": i, "cacheReadTokens": cr,
+                                              "cacheWriteTokens": 0, "outputTokens": o}}})
+
+    with open(os.path.join(psess, "session.v4.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "session", "version": 4, "id": "sess-multi",
+                            "cwd": "X", "origin": "main", "createdAt": ts}) + "\n")
+        f.write(pev(1, "deepseek-account", "deepseek-flash", 1000000, 0, 0) + "\n")
+        f.write(pev(2, "our-free-model", "deepseek-v4.1-flash-free", 1000000, 0, 1000000) + "\n")
+        f.write(pev(3, "glm", "glm-5.3-flash", 1000000, 0, 0) + "\n")
+        f.write(pev(4, "openai", "gpt-9-unlisted", 0, 0, 1000000) + "\n")
+
+    pcfg = os.path.join(tmp, "price-config.yaml")
+    with open(pcfg, "w", encoding="utf-8") as f:
+        f.write('dsh_home: "%s"\n' % phome.replace(chr(92), "/") +
+                'ledger:\n  path: "pled.json"\n  timezone: "Asia/Shanghai"\n'
+                '  prices:\n    currency: USD\n    fx: { usdToCny: 6.67 }\n'
+                '    free: { suffixes: ["-free"] }\n'
+                '    providers:\n'
+                '      openai: { default: { cacheMiss: 2.5, cacheHit: 1.25, output: 10 } }\n'
+                '    models:\n'
+                '      deepseek-flash: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6 }\n'
+                '      deepseek-v4.1-flash: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6 }\n')
+    r = run("ledger.py", "ingest", "--config", pcfg)
+    check("多模型 ingest 成功", r.returncode == 0, (r.stdout + r.stderr)[-200:])
+    pled = json.load(open(os.path.join(tmp, "pled.json"), encoding="utf-8"))
+    # 手算：flash 1M input ×0.15 + free 0 + 未定价 0 + openai 默认 1M output ×10，再 ×6.67
+    pexpect = (1000000 * 0.15 + 1000000 * 10) * 6.67 / 1e6
+    pday = pled["days"]["2026-10-20"]
+    check("多模型：免费与未定价记 ¥0、provider 默认价生效",
+          abs(pday["costCny"] - pexpect) < 1e-6, f"got={pday['costCny']} expect={pexpect:.6f}")
+    check("多模型：免费命中被记账", pled["pricing"]["matched"].get("free") == 1,
+          json.dumps(pled["pricing"]["matched"], ensure_ascii=False))
+    check("多模型：未定价单列、不折 default",
+          [u["model"] for u in pled["pricing"]["unpriced"]] == ["glm-5.3-flash"],
+          json.dumps(pled["pricing"]["unpriced"], ensure_ascii=False))
+    check("多模型：未定价调用数落到日账", pday.get("unpricedCalls") == 1, str(pday.get("unpricedCalls")))
+
+    pa = os.path.join(tmp, "prices-a.json")
+    pb = os.path.join(tmp, "prices-b.json")
+    r1 = run("ledger.py", "prices", "export", "--config", pcfg, "--out", pa)
+    r2 = run("ledger.py", "prices", "export", "--config", pcfg, "--out", pb)
+    a = json.load(open(pa, encoding="utf-8"))
+    b = json.load(open(pb, encoding="utf-8"))
+    a.pop("generatedAt", None)
+    b.pop("generatedAt", None)
+    check("价表导出幂等（去掉生成时间后一致）", r1.returncode == 0 and r2.returncode == 0 and a == b,
+          (r1.stderr + r2.stderr)[-200:])
+    check("价表带解析口径（free/providers/fx）",
+          a.get("free", {}).get("suffixes") == ["-free"] and "openai" in a.get("providers", {}),
+          json.dumps(a.get("free"), ensure_ascii=False))
+    r = run("ledger.py", "prices", "check", "--config", pcfg, "--strict")
+    check("价表对账：有未定价就以 1 退出（可进 CI）", r.returncode == 1, (r.stdout + r.stderr)[-200:])
+    r = run("ledger.py", "report", "--config", pcfg, "--days", "3", "--by", "provider")
+    check("按 provider 汇总可用", r.returncode == 0 and "openai" in (r.stdout or ""),
+          (r.stdout + r.stderr)[-200:])
+
+    # 漂移：导出后改 config（加一个模型价）→ check 必须报「价表过期」；重导后消失
+    r = run("ledger.py", "prices", "export", "--config", pcfg)
+    check("价表导出到默认位置", r.returncode == 0 and "价表 →" in (r.stdout or ""),
+          (r.stdout + r.stderr)[-200:])
+    with open(pcfg, "a", encoding="utf-8") as f:
+        f.write('      deepseek-flash-v2: { cacheMiss: 0.2, cacheHit: 0.004, output: 0.7 }\n')
+    r = run("ledger.py", "prices", "check", "--config", pcfg)
+    check("价表漂移被报出来（改了 config 没重导）", "价表过期" in (r.stdout or ""),
+          (r.stdout or "")[-300:])
+    run("ledger.py", "prices", "export", "--config", pcfg)
+    r = run("ledger.py", "prices", "check", "--config", pcfg)
+    check("重导后漂移消失", "价表过期" not in (r.stdout or ""), (r.stdout or "")[-300:])
+
     # 19.5 交接卡：卡片是切会话唯一的重建入口，下面任一条坏掉，接手者就得回去读原对话
     put_session(home, "session-ab12cd34", "handoff_session.jsonl", tmp)
     r = run("handoff.py", "--session", "ab12cd34", "--slug", "t",

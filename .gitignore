@@ -18,6 +18,8 @@ tmp/
 # ledger.py 派生出的本机账本与解析缓存（含会话 ID / 标题，不要提交）
 data/ledger.json
 data/ledger.json.cache.json
+# prices export 派生的价表快照（源自未提交的 config.yaml；别提交，否则换机会读到别人的价）
+data/prices.json
 # baseline.py --write 的本机基线（doctor --apply 会生成）
 tg-baseline.json
 

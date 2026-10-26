@@ -48,12 +48,28 @@ ledger:
       enabled: false             # 默认关：旧插件的峰谷规则复现不出来，见 docs/ledger-v2.md
       windows: [[1, 4], [6, 10]]
       holidays: []
-    # 每模型三档价（USD / 百万 token）；不写 peak 时按 2 倍估
+    # 每模型三档价（USD / 百万 token）；没写 peak 的模型没有峰谷概念（不再默认按 2 倍估）
     models:
       deepseek-flash: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6,
                         peak: { cacheMiss: 0.3, cacheHit: 0.006, output: 1.2 } }
+      deepseek-v4-pro: { cacheMiss: 0.66, cacheHit: 0.022, output: 1.98,
+                         peak: { cacheMiss: 1.32, cacheHit: 0.044, output: 3.96 } }
+    # 免费通道：命中的模型记 ¥0（tokens 照记）。名单可从 DSH 免费模型目录自动并入，
+    # 后缀/通配是兜底规则（新免费模型不改配置也能零价）
+    free:
+      catalogs:
+        - "~/.dsh/our-free-model/catalog.json"
+      suffixes: ["-free", ":free"]
+      patterns: ["*/free"]
+    # provider 默认价：只在模型名对不上、又属于该 provider 时兜底；不写就一律「未定价」
+    # providers:
+    #   openai: { default: { cacheMiss: 2.5, cacheHit: 1.25, output: 10 } }
+    # 缺 source（unknown）的事件按 default 折算；有名有姓但没登记的模型不折价（记 ¥0 并报出来）
     default: { cacheMiss: 0.15, cacheHit: 0.003, output: 0.6,
                peak: { cacheMiss: 0.3, cacheHit: 0.006, output: 1.2 } }
+    # 价表快照（DSH 胶囊读它）：默认与账本同目录 prices.json；改完价必须重跑
+    #   python scripts/ledger.py prices export
+    # export: "data/prices.json"
 
 # 循环守卫（插件 dsh-loop-guard）的默认参数；安装脚本会写进对应 profile 的 loop-guard 条目
 loop_guard:

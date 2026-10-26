@@ -3,6 +3,35 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.1.0 — 2026-10-26（多模型计价：不再局限于 DeepSeek）
+
+- 价表从「一套价」升级为「按 `provider:model` 计价」，解析顺序在 `ledger.py` 与 DSH 胶囊两端
+  完全一致：`provider:model` → `model` → 免费 → 缺 source 折 default → provider 默认 → 家族前缀
+  （整词边界）→ 未定价。
+- 修两个已成立的错数：`deepseek-v4.1-flash-free` 原先被 `deepseek-v4.1-flash` 的「包含」匹配吃掉，
+  按 0.15/0.003/0.6 收费（本应 ¥0，虚高 100%）；非 flash 模型（如 `deepseek-v4-pro`）一律按 flash
+  价低报 4.4 倍。现在免费先于家族匹配，`-free` / `:free` / `*/free` 三条兜底规则不依赖名单。
+- **未定价不再折 default**：有名有姓但价表里没有 → 钱记 ¥0、tokens 照记，进 `pricing.unpriced`
+  与 `days[date].unpricedCalls`，`report` 末尾提示。缺 `message.source` 的事件（标题生成）仍按
+  `default` 折算，归属 `missing-source`，与「未定价」分开统计。
+- 新增 `providers.<p>.default`（只在显式配置时兜底）与 `free.catalogs`（从 DSH 免费模型目录
+  `our-free-model/catalog.json` 自动并入免费 id；本机实测并入 24 个）。
+- 峰时价只对声明了 `peak` 的模型生效，不再对没写 peak 的模型默认 ×2（别家峰谷窗口跟 DeepSeek 不同）。
+- 新增 `ledger.py prices export|show|check`：`export` 把价表归一成 `data/prices.json`（含内容指纹，
+  不含生成时间，重复导出逐字节一致），DSH 胶囊直接读它，不在 JS 里二次解析 YAML；`check` 拿日志里
+  真实出现的 `provider:model` 对账价表，并检测「改了 config 忘导出」的漂移，`--strict` 有未定价/
+  漂移就退出码 1（可进 CI）。
+- `report --by provider` 新增；`pricing` 段新增 `schema / fingerprint / providers / free / default / unpriced`。
+- DSH 胶囊（`dsh-tg-account` 0.4.0 → 0.5.0，本机 `local-plugins/`）：逐事件按 `message.source`
+  取 provider/model 计价，`account()` 的账目循环抽成可测的 `summarizeSession(raw, book)`；面板新增
+  「按模型」小表（调用数 / ¥ / 免费标记）与橙色「未定价 N 次」；「今日合计」按同一价表逐条重算，
+  缓存键带价表指纹（改价后当天数字立即更新）；读不到 `prices.json` 时退回单套价（旧行为，不会更糟）。
+  顺带修掉汇率双真源：胶囊此前抓不到 `rate:` 就退回 7.1，而账本用 `fx.usdToCny=6.6702`（差 6.4%）。
+- 对账：同一份会话日志两端逐分一致（`session-a40d176d` ¥1.0059 / 账本 1.005856；
+  `session-3d32065c` ¥0.6827 / 0.682744）；本机全量 `prices check` 5 个 `provider:model` 全部可解释
+  （含 `workbuddy` / `workbuddy-ai` 两个非 DS 通道）。
+- 计数：断言 155 → **167**（多模型计价 9 条：免费/未定价/provider 默认/导出幂等/漂移/按 provider 汇总）。
+
 ## v1.0.2 — 2026-10-25（对话夹母文件夹：装的时候问宿主放哪；删掉 `~/tg-memory` 静默兜底）
 
 - 新增 `scripts/setup.py`（安装向导）：问一句「对话夹放哪」，回车用默认 `~/Documents/tg-memory`；

@@ -25,6 +25,8 @@
   python scripts/ledger.py verify                 # 校验账本内部自洽（CI 用）
 """
 import argparse
+import fnmatch
+import hashlib
 import json
 import os
 import sys
@@ -71,79 +73,169 @@ def cache_file(ledger_path):
 
 
 # ---------------------------------------------------------------- 价格表
+#
+# 2026-10-26：从「一套 DeepSeek 价」升级为「按 provider:model 计价」。
+#   真源仍是 config.yaml 的 ledger.prices，这里归一成 book（免费规则 / provider 默认价 /
+#   汇率 / 峰谷），`prices export` 落一份 prices.json 给 DSH 胶囊读 —— 两端只有一份价。
+#   解析顺序：provider:model → model → 免费 → 缺 source → provider 默认 → 家族前缀 → 未定价。
+#   未定价不折 default：tokens 照记、钱记 0 并单列清单；静默套 DS 价是最危险的错数来源。
 
-def price_table(cfg):
-    """把 config 的 ledger.prices 归一成一个查表函数；缺项时退回旧的 prices_usd_per_mtok。
+PRICES_SCHEMA = "tg-prices/1"
+FREE_DEFAULT_SUFFIXES = ["-free", ":free"]
 
-    返回 (prices, fx, peak_cfg)，prices = {模型名: {cacheMiss, cacheHit, output, peak:{...}}}。
-    """
-    led = cfg.get("ledger") or {}
-    pr = led.get("prices") or {}
-    legacy = cfg.get("prices_usd_per_mtok") or {}
-    base = {
-        "cacheMiss": float(legacy.get("input", 0.15)),
-        "cacheHit": float(legacy.get("cached", 0.003)),
-        "output": float(legacy.get("output", 0.6)),
-    }
-    models = {}
-    for name, spec in (pr.get("models") or {}).items():
-        if not isinstance(spec, dict):
-            continue
-        row = dict(base)
+ZERO_ROW = {"cacheMiss": 0.0, "cacheHit": 0.0, "output": 0.0, "peak": None}
+
+
+def _price_row(spec, base=None):
+    """{cacheMiss,cacheHit,output[,peak]} → 归一价格行；peak=None 表示该模型没有峰谷概念。"""
+    row = dict(base or {"cacheMiss": 0.15, "cacheHit": 0.003, "output": 0.6})
+    row.pop("peak", None)
+    if isinstance(spec, dict):
         for k in ("cacheMiss", "cacheHit", "output"):
             if spec.get(k) is not None:
                 row[k] = float(spec[k])
-        peak = {k: row[k] for k in ("cacheMiss", "cacheHit", "output")}
-        if isinstance(spec.get("peak"), dict):
-            for k in ("cacheMiss", "cacheHit", "output"):
-                if spec["peak"].get(k) is not None:
-                    peak[k] = float(spec["peak"][k])
-        else:
-            # 没写 peak 就按 2 倍估（旧插件的口径），并在报告里标注
-            peak = {k: row[k] * 2 for k in row}
-        row["peak"] = peak
-        models[name] = row
-    if isinstance(pr.get("default"), dict):
+    peak = None
+    if isinstance(spec, dict) and isinstance(spec.get("peak"), dict):
+        peak = {}
         for k in ("cacheMiss", "cacheHit", "output"):
-            if pr["default"].get(k) is not None:
-                base[k] = float(pr["default"][k])
-    base_peak = {k: base[k] * 2 for k in base}
-    if isinstance(pr.get("default", {}).get("peak"), dict):
-        for k in ("cacheMiss", "cacheHit", "output"):
-            if pr["default"]["peak"].get(k) is not None:
-                base_peak[k] = float(pr["default"]["peak"][k])
-    base["peak"] = base_peak
+            v = spec["peak"].get(k)
+            peak[k] = float(v) if v is not None else row[k]
+    row["peak"] = peak
+    return row
 
-    fx = led.get("prices", {}).get("fx") or {}
+
+def load_free_catalog_ids(paths):
+    """从 DSH 免费模型目录（our-free-model/catalog.json）读免费 id；读不到就跳过，不报错。"""
+    ids = set()
+    for p in paths or []:
+        try:
+            with open(expand(p, os.getcwd()), encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        for e in (data.get("entries") or []):
+            if isinstance(e, str):
+                ids.add(e)
+            elif isinstance(e, dict) and e.get("id"):
+                ids.add(str(e["id"]))
+        for r in (data.get("kiloRows") or []):
+            mid = str((r or {}).get("id") or "")
+            if mid and "free" in mid.lower():
+                ids.add(mid)
+    return ids
+
+
+def price_book(cfg):
+    """config → 归一价表 book（models / providers / free / default / fx / peak）。"""
+    led = cfg.get("ledger") or {}
+    pr = led.get("prices") or {}
+    legacy = cfg.get("prices_usd_per_mtok") or {}
+    legacy_row = {
+        "cacheMiss": float(legacy.get("input", 0.15)),
+        "cacheHit": float(legacy.get("cached", 0.003)),
+        "output": float(legacy.get("output", 0.6)),
+        "peak": None,
+    }
+    models = {}
+    for name, spec in (pr.get("models") or {}).items():
+        if isinstance(spec, dict):
+            models[str(name)] = _price_row(spec, legacy_row)
+    providers = {}
+    for name, spec in (pr.get("providers") or {}).items():
+        d = spec.get("default") if isinstance(spec, dict) else None
+        providers[str(name)] = {"default": _price_row(d, legacy_row) if isinstance(d, dict) else None}
+    default = _price_row(pr["default"], legacy_row) if isinstance(pr.get("default"), dict) else None
+    fcfg = pr.get("free") or {}
+    free = {
+        "models": sorted({str(x) for x in (fcfg.get("models") or [])} |
+                         load_free_catalog_ids(fcfg.get("catalogs") or [])),
+        "suffixes": [str(x) for x in (fcfg.get("suffixes") or FREE_DEFAULT_SUFFIXES)],
+        "patterns": [str(x) for x in (fcfg.get("patterns") or [])],
+        "catalogs": [str(x) for x in (fcfg.get("catalogs") or [])],
+    }
+    fx = pr.get("fx") or {}
     rate = float(fx.get("usdToCny") or cfg.get("rate") or 7.1)
-    peak_cfg = pr.get("peak") or {}
+    pcfg = pr.get("peak") or {}
     windows = []
-    for w in (peak_cfg.get("windows") or []):
+    for w in (pcfg.get("windows") or []):
         if isinstance(w, (list, tuple)) and len(w) == 2:
             windows.append((int(w[0]), int(w[1])))
-    return {"models": models, "default": base}, rate, {
-        "enabled": bool(peak_cfg.get("enabled", bool(windows))),
-        "windows": windows,
-        "holidays": set(peak_cfg.get("holidays") or []),
+    peak = {"enabled": bool(pcfg.get("enabled", False)), "windows": windows,
+            "holidays": set(pcfg.get("holidays") or [])}
+    book = {
+        "schema": PRICES_SCHEMA,
+        "models": models,
+        "providers": providers,
+        "default": default,
+        "free": free,
+        "fx": {"usdToCny": rate, "asOf": str(fx.get("asOf") or "")},
+        "peak": peak,
     }
+    book["fingerprint"] = price_fingerprint(book)
+    return book
 
 
-def price_for(prices, model):
-    """模型名匹配：先全名，再去掉 `provider:` 前缀，再按后缀包含，最后 default。
+def price_fingerprint(book):
+    """价表指纹：两端与缓存靠它判断「价变了没」，不含生成时间。"""
+    payload = {
+        "models": book["models"],
+        "providers": book["providers"],
+        "default": book["default"],
+        "free": {k: book["free"][k] for k in ("models", "suffixes", "patterns")},
+        "fx": book["fx"],
+        "peak": {"enabled": book["peak"]["enabled"], "windows": book["peak"]["windows"],
+                 "holidays": sorted(book["peak"]["holidays"])},
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
-    返回 (价格行, 命中方式)。命中方式是为了暴露「静默按 default 折算」：别人换模型
-    （Claude / GPT / 自建）时名字对不上价表就落到 default，算出来的钱看着正常，
-    其实套的是 DeepSeek 的价——这是最容易被忽略的错数来源，所以必须能报出来。
-    """
-    if model in prices["models"]:
-        return prices["models"][model], "exact"
-    short = model.split(":", 1)[-1]
-    if short in prices["models"]:
-        return prices["models"][short], "short"
-    for name, row in prices["models"].items():
-        if name and (short.startswith(name) or name in short):
-            return row, "contains"
-    return prices["default"], "default"
+
+def is_free(book, provider, model):
+    free = book["free"]
+    full = f"{provider}:{model}"
+    if model in free["models"] or full in free["models"]:
+        return True
+    for s in free["suffixes"]:
+        if s and model.endswith(s):
+            return True
+    for p in free["patterns"]:
+        if p and fnmatch.fnmatchcase(model, p):
+            return True
+    return False
+
+
+def _family_match(model, name):
+    """家族前缀只认整词边界：deepseek-v4.1-flash 不许吃掉 deepseek-v4.1-flash-free。"""
+    if not model or not name:
+        return False
+    if model == name:
+        return True
+    if model.startswith(name):
+        return model[len(name):len(name) + 1] in ("-", ".", "_", "/", ":", "@")
+    return False
+
+
+def price_for(book, provider, model):
+    """→ (价格行 | None, 命中方式)。None = 未定价：tokens 照记，钱不许瞎填。"""
+    provider = str(provider or "unknown")
+    model = str(model or "unknown")
+    full = f"{provider}:{model}"
+    models = book["models"]
+    if full in models:
+        return models[full], "exact"
+    if model in models:
+        return models[model], "model"
+    if is_free(book, provider, model):
+        return dict(ZERO_ROW), "free"
+    if model == "unknown" or provider == "unknown":
+        return book["default"], "missing-source"
+    pd = (book["providers"].get(provider) or {}).get("default")
+    if pd:
+        return pd, "provider-default"
+    for name in sorted(models, key=len, reverse=True):
+        if _family_match(model, name):
+            return models[name], "family"
+    return None, "unpriced"
 
 
 def is_peak(peak_cfg, day, hour):
@@ -252,13 +344,18 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
     cpath = cache_file(lpath)
     cache = {"v": CACHE_VERSION, "files": {}} if rebuild else load_cache(cpath)
     files = cache["files"]
-    prices, fx_rate, peak_cfg = price_table(cfg)
+    book = price_book(cfg)
+    fx_rate = book["fx"]["usdToCny"]
+    peak_cfg = book["peak"]
 
     seen_paths = set()
     stats = {"files": 0, "cached": 0, "events": 0, "damaged": 0, "startedAt": time.time()}
     days = {}
-    # 价表没覆盖到的模型：名字对不上就按 default 折算，必须记账并报出来
+    # 价表没覆盖到的模型分两类，都必须报出来：
+    #   unmatched = 日志缺 source（unknown），按 default 折算是可解释的；
+    #   unpriced  = 有名有姓但价表里没有，钱记 0、tokens 照记，绝不静默套 DS 价。
     unmatched = {}
+    unpriced = {}
     matched_how = {}
 
     for home, path in iter_session_files(homes):
@@ -298,15 +395,25 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
                 "byProviderModel": {}, "byHome": {}, "sessions": {},
             })
             key = f"{provider}:{model}"
-            row, how = price_for(prices, model)
+            row, how = price_for(book, provider, model)
             matched_how[how] = matched_how.get(how, 0) + 1
-            if how == "default":
+            if row is None:
+                u = unpriced.setdefault(key, {"calls": 0, "provider": provider, "model": model,
+                                              "input": 0, "cacheRead": 0, "cacheWrite": 0,
+                                              "output": 0})
+                u["calls"] += 1
+                u["input"] += i
+                u["cacheRead"] += cr
+                u["cacheWrite"] += cw
+                u["output"] += o
+                slot["unpricedCalls"] = slot.get("unpricedCalls", 0) + 1
+            elif how == "missing-source":
                 u = unmatched.setdefault(key, {"calls": 0, "provider": provider, "model": model})
                 u["calls"] += 1
-            peak = is_peak(peak_cfg, day, dt.hour)
-            rate = row["peak"] if peak else row
-            usd = (i * rate["cacheMiss"] + cw * rate["cacheMiss"]
-                   + cr * rate["cacheHit"] + o * rate["output"]) / 1_000_000.0
+            peak = row is not None and bool(row.get("peak")) and is_peak(peak_cfg, day, dt.hour)
+            rate = (row["peak"] if peak else row) if row is not None else None
+            usd = 0.0 if rate is None else (i * rate["cacheMiss"] + cw * rate["cacheMiss"]
+                                            + cr * rate["cacheHit"] + o * rate["output"]) / 1_000_000.0
             cny = usd * fx_rate
             slot["calls"] += 1
             slot["input"] += i
@@ -380,16 +487,22 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
         "timezone": tz_name,
         "currency": "CNY",
         "pricing": {
+            "schema": PRICES_SCHEMA,
             "currency": "USD",
-            "fx": {"usdToCny": fx_rate},
+            "fx": {"usdToCny": fx_rate, "asOf": book["fx"]["asOf"]},
             "peak": {"enabled": peak_cfg["enabled"], "windows": peak_cfg["windows"],
                      "holidays": sorted(peak_cfg["holidays"])},
-            "models": sorted(prices["models"]),
-            "source": "config.yaml ledger.prices（缺项退回 prices_usd_per_mtok；peak 缺省按 2 倍）",
-            # 命中方式分布 + 兜底清单：下游据此判断「这份账本是不是含估算」
+            "models": sorted(book["models"]),
+            "providers": {k: bool(v.get("default")) for k, v in book["providers"].items()},
+            "free": {k: book["free"][k] for k in ("models", "suffixes", "patterns")},
+            "default": book["default"],
+            "fingerprint": book["fingerprint"],
+            "source": "config.yaml ledger.prices（未定价不折价；peak 只对声明了峰时价的模型生效）",
+            # 命中方式分布 + 两类兜底清单：下游据此判断「这份账本里有多少钱是猜的」
             "matched": dict(sorted(matched_how.items())),
             "unmatched": [unmatched[k] for k in sorted(unmatched)],
-            "estimated": bool(unmatched),
+            "unpriced": [unpriced[k] for k in sorted(unpriced)],
+            "estimated": bool(unmatched) or bool(unpriced),
         },
         "sources": sources,
         "days": ordered,
@@ -413,13 +526,148 @@ def build_ledger(homes, cfg, base, rebuild=False, quiet=False):
               f"损坏行 {stats['damaged']}")
         print(f"  {ledger['totals']['range'][0]} → {ledger['totals']['range'][1]}："
               f"{len(ordered)} 天 · {total['calls']} 次调用 · ¥{ledger['totals']['costCny']:.2f}")
+        if unpriced:
+            print(f"  ! 未定价：{len(unpriced)} 个模型不在价表里，这些调用记 ¥0、tokens 照记 ——"
+                  f" 补 config.yaml 的 ledger.prices（models / providers / free）后重跑")
+            for k in sorted(unpriced):
+                print(f"      {k}（{unpriced[k]['calls']} 次）")
         if unmatched:
-            print(f"  ! 计价兜底：{len(unmatched)} 个模型不在价表里，按 default 折算 ——"
-                  f" 钱数只能当量级看。补 config.yaml 的 ledger.prices.models 后重跑 --rebuild")
+            print(f"  ! 缺 source：{len(unmatched)} 类事件没有 provider/model，按 default 折算 ——"
+                  f" 量小（标题生成等）可忽略")
             for k in sorted(unmatched):
                 print(f"      {k}（{unmatched[k]['calls']} 次）")
         print(f"  耗时 {time.time() - stats['startedAt']:.1f}s")
     return ledger
+
+
+def price_export_path(cfg, base):
+    """prices.json 落点：默认与账本同目录（胶囊按 config.yaml 同目录 data/prices.json 读）。"""
+    raw = (((cfg.get("ledger") or {}).get("prices") or {}).get("export") or "").strip()
+    if raw:
+        return expand(raw, base)
+    return os.path.join(os.path.dirname(ledger_file(cfg, base)), "prices.json")
+
+
+def price_export_payload(book, cfg_path):
+    peak = book["peak"]
+    return {
+        "schema": PRICES_SCHEMA,
+        "generatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "source": str(cfg_path or "config.yaml"),
+        "asOf": book["fx"]["asOf"],
+        "fingerprint": book["fingerprint"],
+        "fx": dict(book["fx"]),
+        "peak": {"enabled": peak["enabled"], "windows": peak["windows"],
+                 "holidays": sorted(peak["holidays"])},
+        "default": book["default"],
+        "models": book["models"],
+        "providers": book["providers"],
+        "free": {k: book["free"][k] for k in ("models", "suffixes", "patterns")},
+    }
+
+
+def scan_usage(homes):
+    """扫日志 → {provider:model: {calls, input, cacheRead, cacheWrite, output}}（诊断用，不走缓存）。"""
+    agg = {}
+    for home, path in iter_session_files(homes):
+        try:
+            _meta, records = parse_session_file(os.path.realpath(path))
+        except Exception:
+            continue
+        for _ts, provider, model, i, cr, cw, o, _turn, _step in records:
+            k = f"{provider}:{model}"
+            s = agg.setdefault(k, {"calls": 0, "input": 0, "cacheRead": 0,
+                                   "cacheWrite": 0, "output": 0})
+            s["calls"] += 1
+            s["input"] += i
+            s["cacheRead"] += cr
+            s["cacheWrite"] += cw
+            s["output"] += o
+    return agg
+
+
+def cmd_prices(args, cfg, base, homes):
+    book = price_book(cfg)
+    if args.action == "export":
+        out = args.out or price_export_path(cfg, base)
+        save_json_atomic(out, price_export_payload(book, args.config))
+        if args.json:
+            emit_json({"path": out, "fingerprint": book["fingerprint"],
+                       "models": len(book["models"]), "free": len(book["free"]["models"])})
+        else:
+            print(f"价表 → {out}")
+            print(f"  模型 {len(book['models'])} 个 · provider 默认价 {sum(1 for v in book['providers'].values() if v.get('default'))} 个"
+                  f" · 免费 {len(book['free']['models'])} 个 · 汇率 {book['fx']['usdToCny']}"
+                  f"（asOf {book['fx']['asOf'] or '未标'}）")
+            print(f"  指纹 {book['fingerprint']} · 峰谷 {'开' if book['peak']['enabled'] else '关'}")
+        return 0
+
+    if args.action == "show":
+        rows = []
+        for name, row in sorted(book["models"].items()):
+            rows.append({"model": name, **row})
+        if args.json:
+            emit_json({"fingerprint": book["fingerprint"], "models": rows,
+                       "providers": {k: bool(v.get("default")) for k, v in book["providers"].items()},
+                       "free": book["free"], "fx": book["fx"],
+                       "peak": {"enabled": book["peak"]["enabled"],
+                                "windows": book["peak"]["windows"]},
+                       "default": book["default"]})
+            return 0
+        print(f"价表（USD/百万 token）· 指纹 {book['fingerprint']} · 汇率 {book['fx']['usdToCny']}"
+              f" · 峰谷 {'开' if book['peak']['enabled'] else '关'}\n")
+        print(f"{'model':<32}{'cacheMiss':>11}{'cacheHit':>10}{'output':>9}  峰时价")
+        for r in rows:
+            pk = ("%s/%s/%s" % (r["peak"]["cacheMiss"], r["peak"]["cacheHit"], r["peak"]["output"])
+                  if r.get("peak") else "—")
+            print(f"{r['model']:<32}{r['cacheMiss']:>11}{r['cacheHit']:>10}{r['output']:>9}  {pk}")
+        print(f"\n默认价（缺 source 时折算）：{book['default']}")
+        print(f"provider 默认价：" + (", ".join(f"{k}={v['default']}" for k, v in book['providers'].items() if v.get('default')) or "无"))
+        print(f"免费：{len(book['free']['models'])} 个名单 + 后缀 {book['free']['suffixes']}"
+              f" + 通配 {book['free']['patterns'] or '无'}")
+        return 0
+
+    # check：日志里实际出现的 provider:model 与价表对账
+    agg = scan_usage(homes)
+    rows = []
+    for key, v in agg.items():
+        provider, _, model = key.partition(":")
+        row, how = price_for(book, provider, model)
+        rate = row or {"cacheMiss": 0, "cacheHit": 0, "output": 0}
+        cny = (v["input"] * rate["cacheMiss"] + v["cacheWrite"] * rate["cacheMiss"]
+               + v["cacheRead"] * rate["cacheHit"] + v["output"] * rate["output"]) / 1e6 * book["fx"]["usdToCny"]
+        rows.append({"key": key, "how": how, "calls": v["calls"], "costCny": round(cny, 4),
+                     "tokens": v["input"] + v["cacheRead"] + v["cacheWrite"] + v["output"]})
+    rows.sort(key=lambda r: (-r["calls"], r["key"]))
+    bad = [r for r in rows if r["how"] == "unpriced"]
+    # 漂移：导出的 prices.json 是真源生成的快照，指纹对不上说明「改了 config 忘了导出」
+    exp = price_export_path(cfg, base)
+    drift = None
+    if os.path.isfile(exp):
+        try:
+            with open(exp, encoding="utf-8") as f:
+                onfile = json.load(f).get("fingerprint")
+        except Exception:
+            onfile = None
+        if onfile and onfile != book["fingerprint"]:
+            drift = {"path": exp, "file": onfile, "current": book["fingerprint"]}
+    if args.json:
+        emit_json({"rows": rows, "unpriced": bad, "fingerprint": book["fingerprint"],
+                   "exportPath": exp, "drift": drift})
+        return 1 if (args.strict and (bad or drift)) else 0
+    print(f"价表覆盖对账（{len(rows)} 个 provider:model，指纹 {book['fingerprint']}）\n")
+    print(f"{'provider:model':<46}{'状态':<14}{'调用':>7}{'tokens':>14}{'¥':>9}")
+    for r in rows:
+        print(f"{r['key']:<46}{r['how']:<14}{r['calls']:>7}{fmt_int(r['tokens']):>14}{r['costCny']:>9.2f}")
+    if bad:
+        print(f"\n! 未定价 {len(bad)} 个：记 ¥0。补 config.yaml ledger.prices 后重跑 prices export")
+    else:
+        print("\n全部命中价表（exact/model/free/provider-default/family/missing-source 均可解释）")
+    if drift:
+        print(f"! 价表过期：{drift['path']} 指纹 {drift['file']} ≠ 当前 {drift['current']} —— 重跑 prices export")
+    elif not os.path.isfile(exp):
+        print(f"! 没有导出价表（{exp}）：DSH 胶囊会退回单套价。跑 prices export 生成")
+    return 1 if (args.strict and (bad or drift)) else 0
 
 
 # ---------------------------------------------------------------- 读取与展示
@@ -466,6 +714,19 @@ def cmd_report(ledger, args):
                 slot["tokens"] += v["input"] + v["cacheRead"] + v["cacheWrite"] + v["output"]
                 slot["costCny"] += v["costCny"]
         rows = [{"key": n, **v} for n, v in sorted(agg.items(), key=lambda x: -x[1]["costCny"])]
+    elif by == "provider":
+        agg = {}
+        for k in keys:
+            for name, v in (days[k].get("byProviderModel") or {}).items():
+                prov = name.split(":", 1)[0] or "unknown"
+                slot = agg.setdefault(prov, {"calls": 0, "tokens": 0, "costCny": 0.0, "models": set()})
+                slot["calls"] += v["calls"]
+                slot["tokens"] += v["input"] + v["cacheRead"] + v["cacheWrite"] + v["output"]
+                slot["costCny"] += v["costCny"]
+                slot["models"].add(name.split(":", 1)[1] if ":" in name else name)
+        rows = [{"key": n, "calls": v["calls"], "tokens": v["tokens"], "costCny": v["costCny"],
+                 "models": sorted(v["models"])} for n, v in
+                sorted(agg.items(), key=lambda x: -x[1]["costCny"])]
     elif by == "home":
         agg = {}
         for k in keys:
@@ -497,7 +758,7 @@ def cmd_report(ledger, args):
         emit_json({"by": by, "days": args.days, "rows": rows})
         return
 
-    print(f"TG 账本 · 最近 {len(keys)} 天（{keys[0]} → {keys[-1]}）· 按{ {'day': '天', 'model': '模型', 'session': '会话', 'home': ' home'}[by] }\n")
+    print(f"TG 账本 · 最近 {len(keys)} 天（{keys[0]} → {keys[-1]}）· 按{ {'day': '天', 'model': '模型', 'provider': ' provider', 'session': '会话', 'home': ' home'}[by] }\n")
     if by == "day":
         print(f"{'日期':<12}{'¥':>9}{'调用':>7}{'tokens':>16}{'缓存命中率':>11}")
         for r in rows:
@@ -515,6 +776,11 @@ def cmd_report(ledger, args):
         print(f"{'provider:model':<44}{'¥':>9}{'调用':>8}{'tokens':>15}")
         for r in rows:
             print(f"{r['key']:<44}{r['costCny']:>9.2f}{r['calls']:>8}{fmt_int(r['tokens']):>15}")
+    elif by == "provider":
+        print(f"{'provider':<28}{'¥':>9}{'调用':>8}{'tokens':>15}  模型")
+        for r in rows:
+            print(f"{r['key']:<28}{r['costCny']:>9.2f}{r['calls']:>8}{fmt_int(r['tokens']):>15}"
+                  f"  {','.join(r['models'])[:60]}")
     else:
         print(f"{'会话':<40}{'¥':>8}{'调用':>7}  标题")
         for r in rows[:args.top]:
@@ -523,6 +789,10 @@ def cmd_report(ledger, args):
             print(f"{r['key']:<40}{r['costCny']:>8.2f}{r['calls']:>7} {mark}{title}")
         if len(rows) > args.top:
             print(f"… 其余 {len(rows) - args.top} 个会话合计 ¥{sum(r['costCny'] for r in rows[args.top:]):.2f}")
+
+    unp = sum(int((days[k].get("unpricedCalls") or 0)) for k in keys)
+    if unp:
+        print(f"\n! 含 {unp} 次未定价调用（记 ¥0）：补 ledger.prices 后重跑 ingest")
 
 
 def cmd_day(ledger, args):
@@ -593,7 +863,7 @@ def main():
     rep = sub.add_parser("report", help="按天/模型/会话汇总")
     add_common_args(rep, json_flag=True)
     rep.add_argument("--days", type=int, default=7)
-    rep.add_argument("--by", choices=["day", "model", "session", "home"], default="day")
+    rep.add_argument("--by", choices=["day", "model", "provider", "session", "home"], default="day")
     rep.add_argument("--top", type=int, default=15)
 
     one = sub.add_parser("day", help="单日明细")
@@ -603,10 +873,19 @@ def main():
     ver = sub.add_parser("verify", help="校验账本自洽")
     add_common_args(ver, json_flag=True)
 
+    prc = sub.add_parser("prices", help="价表：export 给胶囊 / show 看价 / check 与日志对账")
+    add_common_args(prc, json_flag=True)
+    prc.add_argument("action", nargs="?", choices=["export", "show", "check"], default="show")
+    prc.add_argument("--out", help="export 的落点（默认与账本同目录 prices.json）")
+    prc.add_argument("--strict", action="store_true", help="check：有未定价模型就以 1 退出")
+
     a = ap.parse_args()
     cfg, base = load_config(a.config, strict=(a.cmd == "ingest"))
     homes = resolve_dsh_homes(a.dsh_home, cfg=cfg, base=base)
     lpath = ledger_file(cfg, base)
+
+    if a.cmd == "prices":
+        return cmd_prices(a, cfg, base, homes)
 
     if a.cmd == "ingest":
         led = build_ledger(homes, cfg, base, rebuild=a.rebuild, quiet=a.quiet)
