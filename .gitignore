@@ -10,6 +10,9 @@ _history/
 # 本地挂载（打包/发布时不应带）
 skills/*/docs
 
+# 插件依赖（npm/pnpm 装出来的目录不发布）
+plugins/*/node_modules/
+
 # 运行产物
 __pycache__/
 *.pyc

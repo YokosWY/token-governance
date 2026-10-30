@@ -3,6 +3,27 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.4.0 — 2026-10-30（账目胶囊并入公开仓：一条命令装齐 TG + 胶囊）
+
+- 新增 `plugins/dsh-tg-account/`：输入框旁账目胶囊（本会话 / 本会话链 / 今日 / 累计省 / 命中率、
+  逐轮明细、按 `provider:model` 计价、子代理子树归并、超预算告警、交接卡、一键切会话、
+  链级自动切换、侧栏母会话色标、工具输出入口瘦身）。运行时 4 个 JS 文件约 200 KB，
+  Node ≥ 22，自带 155 项 `node --test` 断言。此前它是本机 `local-plugins` 里的私有副本，
+  没有仓库、没有安装器，别人拿不到——这正是「胶囊是私有库」的由来。
+- 新增 `scripts/install_account.py`：幂等安装胶囊（复制运行时文件 → 登记
+  `dependencies`/`dsh.profile.bundles`（改前备份）→ 写 `<DSH_HOME>/_local/tg-account.json`
+  把 `root` 指到本仓库）。支持 `--status` / `--apply` / `--uninstall` / `--home` / `--profile`，
+  默认 dry-run。
+- `install.py` 新增 `--with-account`：跟 `--with-guard` 一样顺带装插件（dry-run 时插件侧也只打印计划）。
+- 胶囊去本机化：删掉硬编码的 `TG_ROOT_DEFAULT`（旧值是作者本机仓库路径）与 `zstd` 本机路径，
+  改成「没配就降级」（内置价、交接卡关掉，账目照算）；`cordis.patch.yml`、README、
+  两个测试夹具里的本机路径同时清掉，`audit_pack` 的可移植性门禁覆盖到插件源码。
+- CI 新增 Node 22 + `node --test plugins/dsh-tg-account/tests/` 一步：插件 155 项与 Python 200 项
+  都是发布门禁。
+- 测试：`run_tests.py` 加 8 项安装器用例（dry-run 不写盘 / 装出插件与登记 / 复跑幂等 /
+  `--status` 认已装 / `--uninstall` 摘登记 / `--with-account` dry-run 与一条命令装齐），
+  总数 192 → 202；`data/counts.json`、README 徽章同步。
+
 ## v1.3.0 — 2026-10-30（一条命令安装；预检不再静默、不再把已装的自己判成冲突）
 
 - 新增 `scripts/install.py`：一条命令完成「探测 DSH home → 写 config.yaml（`dsh_home` /

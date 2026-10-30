@@ -203,6 +203,68 @@ def main():
     r = run("install.py", "--config", i_cfg, "--dsh-home", i_home, "--memory-root", i_mem, "--yes")
     check("install.py 可复跑", r.returncode == 0, (r.stdout + r.stderr)[:240])
 
+    # 5d1. 账目胶囊安装器：dry-run 不写盘 → --apply 落插件/登记/root 配置 → 复跑幂等 → --uninstall 摘登记。
+    #      胶囊是公开仓里唯一带 Node 前端的插件，装了不写 _local/tg-account.json 就会退成内置价，
+    #      所以这里连「root 指向本仓库」一起断言。
+    a_home = os.path.join(tmp, "account-home")
+    os.makedirs(os.path.join(a_home, "sessions"), exist_ok=True)
+    os.makedirs(os.path.join(a_home, "profiles", "desktop"), exist_ok=True)
+    a_pkg = os.path.join(a_home, "profiles", "desktop", "package.json")
+    a_root = os.path.join(a_home, "_local", "tg-account.json")
+    with open(a_pkg, "w", encoding="utf-8") as f:
+        json.dump({"dependencies": {}, "dsh": {"profile": {"bundles": ["@deepseek-ai/dsh-base"]}}},
+                  f, indent=2)
+    a_before = open(a_pkg, "rb").read()
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg)
+    check("install_account dry-run 不写盘",
+          r.returncode == 0 and open(a_pkg, "rb").read() == a_before and not os.path.exists(a_root)
+          and not os.path.isdir(os.path.join(a_home, "local-plugins")),
+          (r.stdout + r.stderr)[:240])
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--apply")
+    pkg_a = json.load(open(a_pkg, encoding="utf-8"))
+    plug = os.path.join(a_home, "local-plugins", "dsh-tg-account")
+    check("install_account 装出插件 + 登记 dependency/bundles + 写 root",
+          r.returncode == 0
+          and os.path.isfile(os.path.join(plug, "lib", "index.js"))
+          and os.path.isfile(os.path.join(plug, "package.json"))
+          and pkg_a["dependencies"].get("@local/dsh-tg-account", "").startswith("link:")
+          and "@local/dsh-tg-account" in pkg_a["dsh"]["profile"]["bundles"]
+          and json.load(open(a_root, encoding="utf-8")).get("root", "").endswith("token-governance"),
+          (r.stdout + r.stderr)[:300])
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--apply")
+    check("install_account 可复跑（内容相同跳过、root 不重写）",
+          r.returncode == 0 and "内容相同" in (r.stdout or ""),
+          (r.stdout + r.stderr)[:240])
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--status")
+    check("install_account --status 认出已装",
+          r.returncode == 0 and "已登记" in (r.stdout or "") and "0.10" in (r.stdout or ""),
+          (r.stdout + r.stderr)[:240])
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--uninstall", "--apply")
+    pkg_b = json.load(open(a_pkg, encoding="utf-8"))
+    check("install_account --uninstall 摘掉登记（插件目录保留）",
+          r.returncode == 0 and "@local/dsh-tg-account" not in pkg_b.get("dependencies", {})
+          and "@local/dsh-tg-account" not in pkg_b["dsh"]["profile"]["bundles"]
+          and os.path.isdir(plug),
+          (r.stdout + r.stderr)[:240])
+
+    # 5d2. 一条命令装齐：install.py --with-account 在装技能的同一次跑里把胶囊也装上。
+    #      dry-run 时插件侧同样只打印计划（不能出现「说好只看，结果写了 package.json」）。
+    a_before2 = open(a_pkg, "rb").read()
+    r = run("install.py", "--config", i_cfg, "--dsh-home", a_home, "--yes", "--with-account",
+            "--dry-run")
+    check("install.py --with-account dry-run 不写 profile",
+          r.returncode == 0 and open(a_pkg, "rb").read() == a_before2
+          and "dry-run" in (r.stdout or ""),
+          (r.stdout + r.stderr)[:300])
+    r = run("install.py", "--config", i_cfg, "--dsh-home", a_home, "--yes", "--with-account")
+    pkg_c = json.load(open(a_pkg, encoding="utf-8"))
+    check("install.py --with-account 一条命令装出胶囊",
+          r.returncode == 0
+          and "@local/dsh-tg-account" in pkg_c.get("dependencies", {})
+          and "@local/dsh-tg-account" in pkg_c["dsh"]["profile"]["bundles"]
+          and os.path.isfile(os.path.join(a_home, "_local", "tg-account.json")),
+          (r.stdout + r.stderr)[:300])
+
     # 5d2. 真新用户路径：新 clone、没有 config.yaml、零参数、只靠环境变量定位 home。
     #      它不走 --config / --dsh-home / --memory-root，与上面几条都不是同一段代码路径：
     #      config.yaml 要自己按 example 生成，skills_dir 要自己落到 <home>/skills。
@@ -718,7 +780,7 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
-                      "install_guard.py", "handoff.py", "setup.py", "install.py")
+                      "install_guard.py", "install_account.py", "handoff.py", "setup.py", "install.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
@@ -731,6 +793,7 @@ def main():
 
     extra = {"new_session.py": ("__probe__", "sid1"),
              "install_guard.py": ("--status",),
+             "install_account.py": ("--status",),
              "handoff.py": ("--session", "ab12cd34", "--slug", "t")}
     for script in config_scripts:
         args = list(extra.get(script, ())) + ["--config", bad_cfg]

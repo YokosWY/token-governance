@@ -17,6 +17,8 @@ r"""一条命令装好 TG：找 DSH home → 写 config.yaml → 拷技能 → �
   python scripts/install.py --dsh-home D:/x/dsh --yes
   python scripts/install.py --skills-dir D:/x/dsh/skills
   python scripts/install.py --with-guard       # 顺带装循环守卫（改 package.json 前备份）
+  python scripts/install.py --with-account     # 顺带装账目胶囊（输入框花费/交接卡，改 package.json 前备份）
+  python scripts/install.py --with-guard --with-account   # 两个插件一起装
   python scripts/install.py --check            # 只检查安装结果，不写
 
 退出码：0 成功 / 1 失败 / 2 定位不到 DSH home（或非交互却需要选择）
@@ -264,6 +266,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，不写任何文件")
     ap.add_argument("--check", action="store_true", help="只检查安装结果")
     ap.add_argument("--with-guard", action="store_true", help="顺带安装循环守卫插件")
+    ap.add_argument("--with-account", action="store_true", help="顺带安装账目胶囊插件")
     a = ap.parse_args()
 
     cfg, base = load_config(a.config, strict=True)
@@ -411,6 +414,21 @@ def main():
                       % r.returncode, file=sys.stderr)
                 return 1
             print("\n  循环守卫已装好（重启后生效）")
+    if a.with_account:
+        if not os.path.isfile(os.path.join(home, "profiles", "desktop", "package.json")):
+            print("\n  账目胶囊：找不到 profiles/desktop/package.json，跳过"
+                  "（用 scripts/install_account.py --profile <名> 手动装）")
+        else:
+            cmd = [sys.executable, os.path.join(REPO, "scripts", "install_account.py"),
+                   "--home", home]
+            if not a.dry_run:
+                cmd.append("--apply")
+            r = subprocess.run(cmd, text=True)
+            if r.returncode != 0:
+                print("\n  账目胶囊安装失败（退出码 %d）：重启不会生效，先修它再重启。"
+                      % r.returncode, file=sys.stderr)
+                return 1
+            print("\n  账目胶囊已装好（重启后生效）")
     print("下一步：")
     print("  1) 重启 DSH（技能在下次启动时加载）")
     # 命令要能**原样粘贴**进 cmd / PowerShell / bash：解释器只写命令名、其余路径加引号。

@@ -12,7 +12,7 @@
 - 愿意改一次配置，然后观察一天。
 
 **用不上**，如果：调的是裸 API（厂商账单更准）、客户端不落逐 step 日志、或没权限改配置。
-本包不联网、不上传、不需要 token；脚本只读本地日志。唯一的写操作是 `install_guard.py` 往 DSH 装循环守卫、`patch_snapshot.py` 存快照。
+本包不联网、不上传、不需要 token；脚本只读本地日志。写操作只有三类：装插件（`install_guard.py` 循环守卫 / `install_account.py` 账目胶囊，写 `<home>/local-plugins` 与 profile `package.json`，改前备份）、`patch_snapshot.py` 存快照、`install.py` 首次生成 `config.yaml`。
 
 ## 1. 装完先跑五步
 

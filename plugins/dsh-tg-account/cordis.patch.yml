@@ -1,0 +1,5 @@
+# dsh-tg-account bundle patch：把账目插件插进 web profile 名册。
+# 价格与窗口从 <DSH_HOME>/_local/tg-account.json 指向的 config.yaml 读（install_account.py 会写），读不到用 flash 默认价。
+- insert:
+    - id: tg-account
+      name: '@local/dsh-tg-account'
