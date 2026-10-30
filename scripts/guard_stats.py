@@ -65,7 +65,7 @@ def load(path):
 
 def summarize(events, days, top):
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
-    kept, by_tool, by_day, by_count = [], {}, {}, {}
+    kept, by_tool, by_day, by_count, by_kind = [], {}, {}, {}, {}
     for o in events:
         ts = o.get("ts") or ""
         try:
@@ -75,10 +75,15 @@ def summarize(events, days, top):
         if t and t < cutoff:
             continue
         kept.append(o)
-        tool = str(o.get("tool"))
-        by_tool[tool] = by_tool.get(tool, 0) + 1
         day = (ts[:10] if len(ts) >= 10 else "未知")
         by_day[day] = by_day.get(day, 0) + 1
+        # v0.2：kind = loop | read-storm | error-streak | budget；旧日志没有 kind，按 loop 算
+        kind = str(o.get("kind") or "loop")
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+        if kind != "loop":
+            continue
+        tool = str(o.get("tool"))
+        by_tool[tool] = by_tool.get(tool, 0) + 1
         c = o.get("count")
         key = str(c) if isinstance(c, int) else "?"
         by_count[key] = by_count.get(key, 0) + 1
@@ -88,6 +93,8 @@ def summarize(events, days, top):
     # 到第 6 次说明前两次提醒都没改变行为 —— 这是「顽固循环」的唯一可观测代理。
     chains = {}
     for o in kept:
+        if (o.get("kind") or "loop") != "loop":
+            continue  # 思考级提醒没有参数链，别混进链统计
         key = (str(o.get("tool")), str(o.get("hash") or ""))
         c = o.get("count")
         chains[key] = max(chains.get(key, 0), int(c) if isinstance(c, int) else 0)
@@ -109,6 +116,7 @@ def summarize(events, days, top):
         "top_tools": [{"tool": k, "hits": v} for k, v in top_tools],
         "by_day": dict(sorted(by_day.items())),
         "by_count": dict(sorted(by_count.items(), key=lambda kv: (len(kv[0]), kv[0]))),
+        "by_kind": dict(sorted(by_kind.items(), key=lambda kv: -kv[1])),
     }
 
 
@@ -119,6 +127,7 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--by-kind", action="store_true", help="按类（loop / read-storm / error-streak / budget）出表")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -145,6 +154,8 @@ def main():
 
     print(f"守卫命中 · 近 {s['window_days']} 天（{path}）")
     print(f"  提醒 {s['events']} 次，涉及 {s['tools']} 个工具（文件内共 {s['events_total']} 条）")
+    if s["by_kind"]:
+        print("  分类：" + " / ".join(f"{k} {v}" for k, v in s["by_kind"].items()))
     if not s["events"]:
         print("  窗口内没有提醒。要么没触发，要么守卫没装最新版。")
         return 0
@@ -154,6 +165,10 @@ def main():
     print(f"\n{'工具':<28}{'次数':>6}")
     for t in s["top_tools"]:
         print(f"{t['tool']:<28}{t['hits']:>6}")
+    if a.by_kind:
+        print(f"\n{'类别':<16}{'次数':>6}")
+        for k, n in s["by_kind"].items():
+            print(f"{k:<16}{n:>6}")
     print(f"\n{'日期':<12}{'次数':>6}")
     for d, n in s["by_day"].items():
         print(f"{d:<12}{n:>6}")

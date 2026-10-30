@@ -8,3 +8,10 @@
         argumentsPreviewChars: 0   # 0 = 只报长度，不把参数内容写进上下文（防密钥进日志）
         exclude: [todo_write, job_output, job_list, job_kill, ask_user_question, send_message, present,
                   http_request, mcp_connector_configure, mcp_connector_reconfigure, mcp_connector_import_json]
+        thinking:               # 思考级空转（v0.2），阈值保守；嫌吵就 enabled: false 或调大
+          enabled: true
+          readStormCalls: 12    # 连续读/检索到 12 次仍无 write/edit → 提醒
+          readStormMinReads: 8  # 且本轮读/检索总数 ≥8
+          errorStreak: 3        # 连续 3 次失败 → 提醒
+          turnCallBudget: 60    # 单轮 ≥60 次调用且 0 落物 → 提醒
+          cooldownCalls: 8      # 两条思考提醒之间至少隔 8 次调用

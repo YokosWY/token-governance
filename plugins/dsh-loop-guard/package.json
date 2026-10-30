@@ -1,13 +1,13 @@
 {
   "name": "@local/dsh-loop-guard",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js"
   },
-  "description": "循环守卫：同一工具 + 完全相同参数（哈希相等）连续重复到阈值时，向模型上下文追加一条内部提醒；不阻断调用、不弹窗、不结束会话，到 askUserAt 次才允许问用户一次。零依赖。",
+  "description": "循环守卫：同一工具 + 完全相同参数（哈希相等）连续重复到阈值时，向模型上下文追加一条内部提醒；不阻断调用、不弹窗、不结束会话，到 askUserAt 次才允许问用户一次。v0.2 另含思考级空转（读海/连败/步数预算）代理检测，默认开。零依赖。",
   "license": "MIT",
   "files": [
     "index.js",

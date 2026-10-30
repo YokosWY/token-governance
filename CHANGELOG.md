@@ -3,6 +3,44 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.2.0 — 2026-10-30（循环守卫 v0.2：思考级空转三条代理规则）
+
+- `dsh-loop-guard` **0.1.1 → 0.2.0**：工具级重复之外再加一层**思考级空转**代理检测。同一状态机在
+  `tools/post-execute` 维护 per-turn 计数（calls / reads / artifacts / errStreak）；插件拿不到 reasoning，
+  只回答「有没有落物、是否连败」：
+  - `read-storm`：连续读/检索 ≥12 次、本轮读 ≥8、期间 0 次 write/edit；
+  - `error-streak`：连续 3 次调用失败；
+  - `budget`：单轮 ≥60 次调用且 0 次 write/edit。
+  - 每轮每规则最多一次，两条思考提醒之间隔 ≥8 次调用；`thinking.enabled: false` 可关，阈值在
+    `cordis.patch.yml` 的 `thinking:` 段可调（随包与代码默认都是**开**、阈值保守）。
+- 验证：`scripts/verify_guard.mjs` 换成自带最小 harness（一个 ctx、一个 agent，真 fire 工具调用、数追加的
+  提醒条数，并核对日志条数、去重与上游一致），**53 项检查全过**；`scripts/guard_stats.py` 加 `--by-kind`
+  （loop / read-storm / error-streak / budget），旧日志无 `kind` 按 loop 计，链统计只数 loop。
+- 文档：`plugins/dsh-loop-guard/README.md` 加「思考级空转」规则表与边界（是代理指标，不是 reasoning 计量）；
+  `docs/operations.md` 把文本层载体写成宿主 `AGENTS.md` §1「空转止损」并补运行时这层；`skills/tg-loop/SKILL.md`
+  同步三条规则与配置样例。
+- 口径统一：此前 README / `package.json` / SKILL 三处把 v0.2 写成「默认关」，与代码和随包 patch
+  （`enabled: true`）矛盾，本次统一为「默认开」。
+- 版本面：项目 `v1.1.1 → v1.2.0`（v1.1.1 只补了 CHANGELOG，没单独打 tag）；`data/counts.json` 与
+  README 徽章同步。
+
+## v1.1.1 — 2026-10-27（胶囊「今日」口径修正：跨会话不再互相污染）
+
+- 修一个成立了的错数：`_local/tg-day.json` 是**共享缓存**，但建缓存时按调用者路径把「本会话」排除掉，
+  而 `dayTotal()` 又把本会话实付加回去 —— 于是**谁建的缓存，谁的数就对；其他会话读同一份缓存时，
+  自己那份被计两遍**。切回旧对话的第一屏必中（缓存是别人 60 秒内建的）。实测同一份日志（真值 ¥10.39）：
+  ace3e531 自己建缓存时读到 ¥10.29（对）、缓存换成另一个会话建之后同一对话读到 ¥11.69（+它自己那份）；
+  反向推算若 ace3e531 建、本会话读则得 ¥9.10（−本会话自己的 ¥1.29 差额）。
+- 修法：`refreshDay()` 扫**全部**会话（`dayFiles(since)` 不再收 `selfPath`），缓存只存事实；读取侧新增纯函数
+  `todayFromCache(cache, selfPath, selfTodayCny, fresh)` 做 `total − cache.files[self] + 本会话今日额`，谁读都对。
+- 修第二个口径不一致：本会话原先按**整段累计**计入今日，而其他会话按日志每行 `time` 切本地日。现在
+  `summarizeSession()` 顺带累加 `cnyToday`（同一个循环，零额外 IO），跨天会话不再把昨天的钱带进今天；
+  「本」仍显示会话累计（语义不变）。
+- 修第三个：`account()` 的 memo 命中会直接返回旧 payload，导致「今日」要等本会话下一步才更新。
+  现在 memo 命中时只重算 `today`（缓存读 + 减法，微秒级），重活照旧复用。
+- 回调：`dsh-tg-account` 0.5.1 → 0.5.2；新增 `tests/today.test.mjs`（日切、缓存减项、新会话、跨天、负数守卫
+  5 例），全套 73 例通过；四视角验收脚本实测 ace3e531 / 本会话 / 真值三数一致（差 3.4e-5，round4 噪声）。
+
 ## v1.1.0 — 2026-10-26（多模型计价：不再局限于 DeepSeek）
 
 - 价表从「一套价」升级为「按 `provider:model` 计价」，解析顺序在 `ledger.py` 与 DSH 胶囊两端

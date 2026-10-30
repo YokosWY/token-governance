@@ -41,8 +41,12 @@ return { ...downstream, additionalContexts: [reminder, ...existing] }
 
 | 层 | 载体 | 何时生效 |
 |---|---|---|
-| 文本策略 | `AGENTS.md` §反重复与止损 | 每次推理都在上下文里，靠模型自觉 |
+| 文本策略 | 宿主 `AGENTS.md` §1「空转止损」 | 每次推理都在上下文里，靠模型自觉 |
 | 运行时 | 本插件 | 命中才追加，强制看见 |
+
+v0.2 起运行时多一层「思考级空转」（随包默认开、阈值保守）：同一状态机在 `tools/post-execute` 里维护 per-turn 计数
+（calls / reads / artifacts / errStreak），命中 `read-storm` / `error-streak` / `budget` 时追加同形状 notice。
+它只做代理观测——插件拿不到 reasoning，只能回答「有没有落物、是否连败」。
 
 两者不是替代关系：文本管「怎么想」，插件管「想漏了怎么办」。
 插件触发的三处置（三行假设、派 max 子代理、问用户三选一）写在 `skills/tg-loop/SKILL.md`。
