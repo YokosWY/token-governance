@@ -4,7 +4,7 @@
 用法：python tests/run_tests.py
 覆盖：解压回退、计价、日志格式拒绝、换参重试口径、预检漂移、首日基线、数字单源。
 """
-import json, os, re, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile
 
 # Windows 默认控制台是 GBK；测试会打印带替换字符的 detail，不固定编码会以
 # UnicodeEncodeError 崩掉（退出码 1，看起来像测试失败，其实是打印失败）。
@@ -160,6 +160,211 @@ def main():
     r = run("preflight.py", "--config", cfg)
     check("插件名漂移被报出", r.returncode == 1 and "插件名漂移" in r.stdout)
 
+    # 5b. 空机器预检：没有会话时也要给判定（旧版会被 schema_budget 的 sys.exit 吞掉整段输出）
+    empty_home = os.path.join(tmp, "emptyhome")
+    os.makedirs(os.path.join(empty_home, "skills"), exist_ok=True)
+    ecfg = os.path.join(tmp, "emptycfg.yaml")
+    write_cfg(ecfg, empty_home)
+    r = run("preflight.py", "--config", ecfg)
+    # skills_dir 是空目录 = 一个 tg-* 都没装：必须是「待确认 + 缺技能」，
+    # 不能像旧版那样判「放行」（那和 install.py --check 的 rc=1 自相矛盾）
+    check("空 home 预检仍给判定且不冒充放行",
+          r.returncode == 1 and "判定：待确认" in r.stdout and "缺技能" in r.stdout,
+          (r.stdout + r.stderr)[:240])
+
+    # 5c. 装完再预检：内容一致算「已安装」，不再报 10 条「同名技能」
+    inst_home = os.path.join(tmp, "insthome")
+    shutil.copytree(os.path.join(ROOT, "skills"), os.path.join(inst_home, "skills"))
+    icfg = os.path.join(tmp, "instcfg.yaml")
+    write_cfg(icfg, inst_home)
+    r = run("preflight.py", "--config", icfg)
+    check("已安装技能不判冲突",
+          r.returncode == 0 and "已安装技能" in r.stdout and "同名技能" not in r.stdout,
+          (r.stdout + r.stderr)[:240])
+
+    # 5d. 安装器：dry-run 不写盘；真装可复跑；--check 通过
+    i_home = os.path.join(tmp, "installer-home")
+    os.makedirs(os.path.join(i_home, "sessions"), exist_ok=True)
+    i_cfg = os.path.join(tmp, "installer.yaml")
+    i_mem = os.path.join(tmp, "installer-memory")
+    r = run("install.py", "--config", i_cfg, "--dsh-home", i_home, "--memory-root", i_mem,
+            "--yes", "--dry-run")
+    check("install.py dry-run 不写配置", r.returncode == 0 and not os.path.exists(i_cfg),
+          (r.stdout + r.stderr)[:240])
+    r = run("install.py", "--config", i_cfg, "--dsh-home", i_home, "--memory-root", i_mem, "--yes")
+    skills_ok = all(os.path.isfile(os.path.join(i_home, "skills", s, "SKILL.md"))
+                    for s in os.listdir(os.path.join(ROOT, "skills"))
+                    if s.startswith("tg-"))
+    check("install.py 装出配置与 10 个技能",
+          r.returncode == 0 and os.path.isfile(i_cfg) and skills_ok,
+          (r.stdout + r.stderr)[:240])
+    r = run("install.py", "--config", i_cfg, "--dsh-home", i_home, "--check")
+    check("install.py --check 通过", r.returncode == 0, (r.stdout + r.stderr)[:240])
+    r = run("install.py", "--config", i_cfg, "--dsh-home", i_home, "--memory-root", i_mem, "--yes")
+    check("install.py 可复跑", r.returncode == 0, (r.stdout + r.stderr)[:240])
+
+    # 5d2. 真新用户路径：新 clone、没有 config.yaml、零参数、只靠环境变量定位 home。
+    #      它不走 --config / --dsh-home / --memory-root，与上面几条都不是同一段代码路径：
+    #      config.yaml 要自己按 example 生成，skills_dir 要自己落到 <home>/skills。
+    clone = os.path.join(tmp, "newbie-clone")
+    shutil.copytree(ROOT, clone, ignore=shutil.ignore_patterns(
+        ".git", "__pycache__", "*.pyc", "config.yaml", "_local", "_history", "*bak*"))
+    nb_home = os.path.join(tmp, "newbie-home")
+    nb_mem = os.path.join(tmp, "newbie-memory")
+    os.makedirs(os.path.join(nb_home, "sessions"), exist_ok=True)
+    nb_env = {**os.environ, "PYTHONIOENCODING": "utf-8",
+              "DSH_HOME": nb_home, "TG_MEMORY_ROOT": nb_mem}
+    nb = subprocess.run([PY, os.path.join(clone, "scripts", "install.py")], cwd=clone,
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", env=nb_env)
+    nb_skills = all(os.path.isfile(os.path.join(nb_home, "skills", s, "SKILL.md"))
+                    for s in os.listdir(os.path.join(ROOT, "skills")) if s.startswith("tg-"))
+    check("install.py 零参数在新 clone 上装成（自建 config + 技能落 <home>/skills）",
+          nb.returncode == 0 and os.path.isfile(os.path.join(clone, "config.yaml")) and nb_skills,
+          (nb.stdout + nb.stderr)[:240])
+    # 照抄它打印的「下一步」：只把解释器换成当前 PY、脚本换成副本里的同名脚本，参数原样喂回去。
+    # 不用 shlex 拆整行：Windows 路径里的反斜杠会被 POSIX 规则当转义吃掉。
+    step = [ln for ln in (nb.stdout or "").splitlines() if "preflight.py" in ln
+            and "--config" in ln]
+    ok_next, detail = False, "没打印带 --config 的 preflight 下一步"
+    if step:
+        m = re.search(r'--config\s+"([^"]+)"', step[0]) or re.search(r"--config\s+(\S+)", step[0])
+        if m:
+            rr = subprocess.run(
+                [PY, os.path.join(clone, "scripts", "preflight.py"), "--config", m.group(1)],
+                cwd=clone, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", env=nb_env)
+            ok_next = rr.returncode == 0 and "判定：放行" in rr.stdout
+            detail = (rr.stdout + rr.stderr)[:240]
+        else:
+            detail = "下一步里的 --config 取不出路径：%s" % step[0]
+    check("install.py 打印的下一步可照抄（preflight 放行）", ok_next, detail)
+
+    # 5d3. 独立评审实测出来的五处（2026-10-30）：都是「看起来装好了，其实没有」那类。
+    def nb_run(*args, env=None, cwd=None):
+        return subprocess.run([PY, os.path.join(clone, "scripts", "install.py"), *args],
+                              cwd=cwd or clone, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", env=env or nb_env)
+
+    # (a) --check 必须比对内容：把一条技能截成占位，仍报通过就是假绿（旧版行为）
+    victim = os.path.join(nb_home, "skills", "tg-cost", "SKILL.md")
+    restore = open(victim, "rb").read()
+    open(victim, "w", encoding="utf-8").write("---\nname: tg-cost\n---\n占位\n")
+    r = nb_run("--check")
+    check("install.py --check 抓到技能内容与本包不同", r.returncode == 1,
+          (r.stdout + r.stderr)[-200:])
+    open(victim, "wb").write(restore)
+    # (b) 复跑：配置字节不变、不新增 .bak-install（旧版每次把 CRLF 重写成 LF、还留备份）
+    cfg_clone = os.path.join(clone, "config.yaml")
+    before_bytes = open(cfg_clone, "rb").read()
+    before_baks = len([f for f in os.listdir(clone) if f.startswith("config.yaml.bak-install-")])
+    r = nb_run()
+    after_baks = len([f for f in os.listdir(clone) if f.startswith("config.yaml.bak-install-")])
+    check("install.py 复跑不改配置字节、不留新备份",
+          r.returncode == 0 and open(cfg_clone, "rb").read() == before_bytes
+          and after_baks == before_baks,
+          "rc=%s new_baks=%s" % (r.returncode, after_baks - before_baks))
+    # (b2) 全新安装（配置由 example 生成）不该留下任何 .bak-*：那是没有旧内容可回滚的假备份
+    fresh_baks = [f for f in os.listdir(clone) if ".bak-" in f]
+    check("install.py 全新安装不留无效备份（.bak-install / .bak-memory-root）",
+          not fresh_baks, fresh_baks[:4])
+    # (b3) 反过来：用户改过的配置真被改时仍要留一份备份，别为了「不留备份」把回滚点砍了
+    other_home = os.path.join(tmp, "other-home")
+    os.makedirs(os.path.join(other_home, "sessions"), exist_ok=True)
+    baks_before = len([f for f in os.listdir(clone) if f.startswith("config.yaml.bak-install-")])
+    nb_run("--dsh-home", other_home)
+    baks_after = len([f for f in os.listdir(clone) if f.startswith("config.yaml.bak-install-")])
+    check("install.py 用户配置真被改时留回滚点", baks_after == baks_before + 1,
+          "before=%s after=%s" % (baks_before, baks_after))
+    # (c) 下一步里的脚本是绝对路径：换到别的 cwd 照抄也能跑（旧版相对路径必挂）
+    #     先做这一条：(d)(e) 会故意把 config/skills_dir 弄坏，之后 preflight 就不会放行了。
+    abs_ok = False
+    if step:
+        m = re.search(r'"([^"]*[\\/]scripts[\\/]preflight\.py)"', step[0])
+        abs_ok = bool(m and os.path.isabs(m.group(1)) and os.path.isfile(m.group(1)))
+        if abs_ok:
+            mc = re.search(r'--config\s+"([^"]+)"', step[0])
+            rr = subprocess.run([PY, m.group(1), "--config", mc.group(1)], cwd=tmp,
+                                capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", env=nb_env)
+            abs_ok = rr.returncode == 0
+    check("install.py 下一步用绝对路径（换 cwd 照抄仍放行）", abs_ok, (step or [""])[0][:160])
+    # (d) 技能内嵌套文件被同名文件占住：不能打「安装完成」rc=0，--check 也要红。
+    #     放在「弄坏 config」的用例之前：它依赖这份安装是好的。
+    nested = os.path.join(nb_home, "skills", "tg-isolate", "templates")
+    shutil.rmtree(nested, ignore_errors=True)
+    open(nested, "w").write("占位")
+    r = nb_run()
+    check("install.py 技能内文件写不进时判失败（不再「安装完成」）",
+          r.returncode == 1 and ("复制失败" in r.stdout + r.stderr
+                                 or "缺失或与本包不同" in r.stdout + r.stderr),
+          (r.stdout + r.stderr)[-240:])
+    check("install.py --check 同样抓到技能内文件缺失", nb_run("--check").returncode == 1)
+    os.remove(nested)
+    nb_run()   # 复原，后面的用例还要用这份安装
+    # (e) 打印的下一步要能**原样粘贴**：cmd / PowerShell 各执行一次（旧版给解释器加引号，
+    #     PowerShell 会 ParserError；只拆参数调 subprocess 是测不到这一层的）
+    fresh_out = nb_run().stdout or ""
+    step2 = [ln for ln in fresh_out.splitlines() if "preflight.py" in ln]
+    cmdline = step2[0].strip().lstrip("0123456789) ").strip() if step2 else ""
+    shells_ok, detail = False, "没打印 preflight 命令"
+    if cmdline:
+        # cmd：shell=True 才会把整串原样交给 cmd，list 形式会把内层引号转义坏。
+        # POSIX（CI 的 ubuntu/macos）没有 cmd 与 pwsh：换 bash -c 做同一件事，
+        # 否则这条用例在 CI 上必红，而它测的「粘贴即用」在那边同样成立。
+        if os.name == "nt":
+            rc_cmd = subprocess.run(cmdline, shell=True, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", env=nb_env)
+        else:
+            rc_cmd = subprocess.run(["bash", "-c", cmdline], capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", env=nb_env)
+        shells_ok = rc_cmd.returncode == 0
+        detail = (rc_cmd.stdout + rc_cmd.stderr)[-200:]
+        pwsh = shutil.which("pwsh") if os.name == "nt" else None
+        if shells_ok and pwsh:
+            ps1 = os.path.join(tmp, "paste.ps1")
+            open(ps1, "w", encoding="utf-8").write(cmdline + "\nexit $LASTEXITCODE\n")
+            rc_ps = subprocess.run([pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                                    "-File", ps1], capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", env=nb_env)
+            shells_ok = rc_ps.returncode == 0
+            detail = (rc_ps.stdout + rc_ps.stderr)[-200:]
+    check("install.py 下一步可原样粘贴（cmd / PowerShell 均通过）", shells_ok, detail)
+    # (f) 写不进去（skills_dir 是已有文件）：rc=1 且说人话，不许 traceback
+    #     这一条会把 clone 里的 skills_dir 改成那个文件，所以放在最后。
+    afile = os.path.join(tmp, "blocker-file")
+    open(afile, "w").write("x")
+    r = nb_run("--skills-dir", afile)
+    check("install.py 写不进技能目录时给 rc=1 且无 traceback",
+          r.returncode == 1 and "Traceback" not in (r.stdout + r.stderr),
+          (r.stdout + r.stderr)[-200:])
+    # (g) 对话夹母文件夹落在文件底下：同样要人话 + rc=1（tg_common.ensure_memory_layout 会抛 OSError）
+    r = nb_run("--memory-root", os.path.join(afile, "sub"))
+    check("install.py 记忆根建不了时给 rc=1 且无 traceback",
+          r.returncode == 1 and "Traceback" not in (r.stdout + r.stderr),
+          (r.stdout + r.stderr)[-200:])
+    # (h) 显式 $DSH_HOME 不存在：必须硬失败，不能悄悄装进自动探测到的另一套 home
+    ghost = os.path.join(tmp, "ghost-home")
+    bad_env = {**nb_env, "DSH_HOME": ghost}
+    never_cfg = os.path.join(tmp, "never-written.yaml")
+    r = nb_run("--config", never_cfg, env=bad_env)
+    check("install.py 在 $DSH_HOME 不存在时失败而不是换一套 home",
+          r.returncode == 2 and ghost not in (r.stdout or "")
+          and not os.path.exists(never_cfg),
+          (r.stdout + r.stderr)[-200:])
+    check("install.py 下一步可原样粘贴（cmd / PowerShell 均通过）", shells_ok, detail)
+
+    # 5e. skills_dir 回退只认含 tg-* 的 <home>/skills：空目录/别的技能库仍须拒绝
+    odd_home = os.path.join(tmp, "oddhome")
+    os.makedirs(os.path.join(odd_home, "skills", "other-skill"), exist_ok=True)
+    ocfg = os.path.join(tmp, "oddcfg.yaml")
+    with open(ocfg, "w", encoding="utf-8") as f:
+        f.write('dsh_home: "%s"\n' % odd_home.replace("\\", "/"))
+        f.write('skills_dir: "%s"\n' % os.path.join(tmp, "missing-skills").replace("\\", "/"))
+    r = run("preflight.py", "--config", ocfg)
+    check("skills_dir 缺失且 home/skills 无 tg-* 时拒绝",
+          r.returncode == 2 and "拒绝" in r.stdout, (r.stdout + r.stderr)[:200])
+
     # 6. 首日基线
     basehome = os.path.join(tmp, "basehome")
     os.makedirs(os.path.join(basehome, "skills"), exist_ok=True)
@@ -260,7 +465,11 @@ def main():
     # 13. doctor 单入口：采集失败也要出动作清单，不能崩；空数据必须给 first-run 而不是空数组
     empty_home = os.path.join(tmp, "doctor-empty-home")
     os.makedirs(empty_home, exist_ok=True)
-    r = run("doctor.py", "--days", "1", "--json", "--dsh-home", empty_home)
+    # 必须配一份指向空 home 的 config：否则子脚本读仓库里的 config.yaml，
+    # 会把本机真实账本/技能算进来，用例就测不到「空数据」了。
+    dcfg = os.path.join(tmp, "doctor-empty.yaml")
+    write_cfg(dcfg, empty_home)
+    r = run("doctor.py", "--days", "1", "--json", "--dsh-home", empty_home, "--config", dcfg)
     try:
         doc = json.loads(r.stdout)
     except json.JSONDecodeError:
@@ -270,6 +479,19 @@ def main():
           isinstance(acts, list) and any(a.get("id") == "first-run" for a in acts),
           f"actions={[a.get('id') for a in acts]}")
     check("doctor 缺数据不崩", r.returncode == 0, str(r.returncode))
+
+    # 13b. 新装当天：有技能、没有会话时不能建议删技能，应给 first-run
+    fresh_home = os.path.join(tmp, "doctor-fresh-home")
+    shutil.copytree(os.path.join(ROOT, "skills"), os.path.join(fresh_home, "skills"))
+    fcfg = os.path.join(tmp, "doctor-fresh.yaml")
+    write_cfg(fcfg, fresh_home)
+    r = run("doctor.py", "--days", "1", "--json", "--dsh-home", fresh_home, "--config", fcfg)
+    try:
+        doc2 = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        doc2 = {}
+    ids2 = [x.get("id") for x in (doc2.get("actions") or [])]
+    check("新装无会话给 first-run 而不是删技能", ids2 == ["first-run"], str(ids2))
 
     # 14. 守卫命中统计（读 events.jsonl；坏行跳过）
     gdir = os.path.join(tmp, "guard")
@@ -496,7 +718,7 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
-                      "install_guard.py", "handoff.py", "setup.py")
+                      "install_guard.py", "handoff.py", "setup.py", "install.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
@@ -888,11 +1110,17 @@ def main():
         syntax_bad.append(f"tests:{e.lineno}")
     check("全部脚本在 Python 3.9 语法下可解析", not syntax_bad, ", ".join(syntax_bad))
 
-    # 18. 首次上手（空 home / 空技能目录）：跑独立脚本，保证它没被改坏
+    # 18. 首次上手（空 home / 空技能目录）：跑独立脚本，保证它没被改坏。
+    #     宿主故意给脏环境（TG_MEMORY_ROOT / DSH_HOME 有值）：模拟老用户/CI 变量在场，
+    #     first_run 必须自己清掉这两个变量，否则第 8c 步会假失败（2026-10-30 实测踩到）。
+    dirty = {**os.environ, "PYTHONIOENCODING": "utf-8",
+             "TG_MEMORY_ROOT": os.path.join(tmp, "host-dirty-memory"),
+             "DSH_HOME": os.path.join(tmp, "host-dirty-home")}
     r = subprocess.run([PY, os.path.join(ROOT, "tests", "first_run.py")],
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, cwd=ROOT)
-    check("首次上手 10 步无 traceback", r.returncode == 0, (r.stdout or "")[-160:])
+                       env=dirty, cwd=ROOT)
+    check("首次上手 10 步无 traceback（宿主 $TG_MEMORY_ROOT 不干扰）", r.returncode == 0,
+          (r.stdout or "")[-200:])
 
     # 22. 账本 v2：从会话日志派生、计价可手算、重复 ingest 幂等、下游脚本能读
     #     （成本插件的替代物；口径 = output×0.6 + input×0.15 + cacheRead×0.003 再乘汇率）

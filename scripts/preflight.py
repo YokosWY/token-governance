@@ -7,6 +7,8 @@ import argparse, json, os, shutil, sys
 
 from tg_common import add_common_args, config_base, memory_root_from, resolve_dsh_home, utf8_stdio
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # 输出含中文与 JSON：Windows 控制台默认 GBK，固定 UTF-8，否则 --json 会被上游按 UTF-8 解成乱码。
 utf8_stdio()
 
@@ -56,6 +58,22 @@ def expand(p, base=None):
     return os.path.normpath(s)
 
 
+def same_installed(name, installed_dir):
+    """安装目录里的 SKILL.md 与本包同名技能逐字节一致 → 就是「已经装好了」，不算冲突。
+
+    为什么要比内容：旧版预检把「目录存在」一律当冲突，于是照 README 先拷技能再预检的
+    新用户会得到 10 条「同名技能」，看起来像装坏了（2026-10-30 复现）。
+    """
+    try:
+        with open(os.path.join(installed_dir, "SKILL.md"), "rb") as f:
+            got = f.read()
+        with open(os.path.join(REPO, "skills", name, "SKILL.md"), "rb") as f:
+            want = f.read()
+        return got == want
+    except OSError:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     add_common_args(ap, json_flag=True)
@@ -67,6 +85,14 @@ def main():
     memory_root = memory_root_from(cfg, base)
     dsh_home = resolve_dsh_home(a.dsh_home, cfg=cfg, base=base)
 
+    # 桌面版的 skills 就在 <home>/skills；配置还留着默认 ~/.dsh/skills 时自动改看它，
+    # 否则新用户第一步就「拒绝：技能目录不可用」，而目录其实就在 home 下。
+    # 只有该目录真含 tg-* 才回退：空目录/别的技能库不能把「拒绝」伪装成「放行」。
+    home_skills = os.path.join(dsh_home, "skills")
+    if not os.path.isdir(skills_dir) and any(
+            os.path.isdir(os.path.join(home_skills, s)) for s in SKILLS):
+        skills_dir = home_skills
+
     rows, conflicts = [], 0
 
     def add(kind, detail, action):
@@ -74,11 +100,26 @@ def main():
         conflicts += 1
         rows.append((kind, detail, action))
 
-    # 1. 同名技能
+    # 1. 同名技能：内容一致的是「已安装」，内容不同的才是冲突
     for s in SKILLS:
         p = os.path.join(skills_dir, s)
         if os.path.exists(p):
-            add("同名技能", p, "问：覆盖 / 改名 / 跳过")
+            if same_installed(s, p):
+                rows.append(("已安装技能", p, "内容与本包一致，无需处理"))
+            else:
+                add("同名技能", p, "内容不同 → 问：覆盖 / 改名 / 跳过")
+
+    # 1b. 缺技能：旧版只看「目录在不在」，于是 skills_dir 指到一个空目录也判「放行」，
+    #     和 install.py --check 的 rc=1 自相矛盾（2026-10-30 评测定）。
+    #     一个都没装 = 目录指错或还没装 → 待确认；只装了部分 = 提示补齐，不阻断。
+    missing = [s for s in SKILLS if not os.path.isdir(os.path.join(skills_dir, s))]
+    if len(missing) == len(SKILLS):
+        add("缺技能", f"{skills_dir} 里一个 tg-* 都没有",
+            "跑 python scripts/install.py（或把 skills_dir 指到已装技能的目录）")
+    elif missing:
+        rows.append(("技能不全", f"缺 {len(missing)} 个：{'、'.join(missing[:4])}"
+                     + (" …" if len(missing) > 4 else ""),
+                     "按需补：python scripts/install.py"))
 
     # 2. 已有 router
     for cand in ("skill-router", "router"):
@@ -90,8 +131,12 @@ def main():
         rows.append(("记忆根未配置", "config.yaml 没有 memory_root，$TG_MEMORY_ROOT 也没设",
                      "跑 python scripts/setup.py 选一个目录（默认 ~/Documents/tg-memory）"))
     elif os.path.isdir(memory_root) and os.listdir(memory_root):
-        add("记忆根非空", f"{memory_root}（{len(os.listdir(memory_root))} 项）",
-            "问：合并 / 另起目录")
+        entries = [e for e in os.listdir(memory_root) if e != ".DS_Store"]
+        # setup.py 刚建的母文件夹只有 README.md + _template：那是安装产物，不是用户数据
+        if set(entries) <= {"README.md", "_template"}:
+            rows.append(("记忆根已建", memory_root, "只有安装脚手架，无需处理"))
+        else:
+            add("记忆根非空", f"{memory_root}（{len(entries)} 项）", "问：合并 / 另起目录")
 
     # 4. 配置
     if os.path.isfile(a.config):
@@ -175,7 +220,7 @@ def main():
                           f"未命中占成本 {mshare * 100:.0f}% → {verdict}")
         else:
             cache_line = "无账本：正常用一天再看；或 python scripts/cache_audit.py --jsonl <会话日志>"
-    except Exception as e:  # 体检失败不影响预检
+    except (Exception, SystemExit) as e:  # 体检失败不影响预检；SystemExit 也要接住
         cache_line = f"跳过（{e.__class__.__name__}: {e}）"
 
     # 9. 工具 schema 预算（只读，不计入冲突、不改退出码）
@@ -183,7 +228,7 @@ def main():
     try:
         import schema_budget as sb
         got = None
-        for p, cand in sb.pick_session(dsh_home, "", 7, limit=5):
+        for p, cand in sb.pick_session(dsh_home, "", 7, limit=5, strict=False):
             got = sb.collect(p)
             if got:
                 break
@@ -211,7 +256,7 @@ def main():
                                f"；最大块 {top[0]} {top[1]['bytes']/1024:.0f} KB")
         else:
             schema_line = "无可用会话日志：正常用一天再看；或 python scripts/schema_budget.py --session <id>"
-    except Exception as e:  # 体检失败不影响预检
+    except (Exception, SystemExit) as e:  # 体检失败不影响预检；pick_session 会 sys.exit
         schema_line = f"跳过（{e.__class__.__name__}: {e}）"
 
     # 准入判定：放行 0 / 待确认 1 / 拒绝 2
@@ -249,7 +294,7 @@ def main():
     for k, d, act in rows:
         print(f"  {k:<{w1}} {d[:w2]:<{w2}} → {act}")
     if conflicts:
-        print(f"判定：待确认（退出码 1）。{conflicts} 项冲突，逐项裁决后再动手。")
+        print(f"判定：待确认（退出码 1）。{conflicts} 项待确认，逐项裁决后再动手。")
         health()
         sys.exit(1)
     health()

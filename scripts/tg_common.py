@@ -372,25 +372,81 @@ def ensure_memory_layout(root):
     return created
 
 
-def write_memory_root(config_path=DEFAULT_CONFIG, value="", example="config.example.yaml"):
-    """把 memory_root 写回 config.yaml：先备份，按行替换（保留其它项与注释），原子落盘。
+_GENERATED = set()   # 本进程里刚由 config.example.yaml 生成出来的配置路径（realpath）
 
-    返回 (config_path, 备份路径或 "")。config.yaml 不存在时先按 example 生成。
+
+def mark_generated(path):
+    """登记「这份配置是本进程刚生成的」：它没有旧内容可回滚，写它不必留备份。"""
+    try:
+        _GENERATED.add(os.path.realpath(path))
+    except OSError:
+        pass
+
+
+def is_generated(path):
+    try:
+        return os.path.realpath(path) in _GENERATED
+    except OSError:
+        return False
+
+
+def _read_text_and_nl(path):
+    """原样读并识别换行风格，返回 (归一化成 \\n 的文本, 原换行符)。
+
+    为什么不用 text 模式读：Windows 上读进来是 `\\n`、写回去也是 `\\n`，用户原本 CRLF 的
+    config.yaml 会被整篇重写（git diff 全红），看起来像工具改了他一堆配置。
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+    nl = "\r\n" if b"\r\n" in raw else "\n"
+    return raw.decode("utf-8").replace("\r\n", "\n"), nl
+
+
+def _write_bytes_atomic(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def write_memory_root(config_path=DEFAULT_CONFIG, value="", example="config.example.yaml"):
+    """把 memory_root 写回 config.yaml：按行替换（保留其它项、注释与换行风格），原子落盘。
+
+    三条硬规矩（2026-10-30 评测定，安装器与 setup.py 共用）：
+      1) 内容没变就不写、不备份——重复运行不该在仓库里堆 `.bak-*`；
+      2) 换行风格跟原文件走（CRLF 保持 CRLF）；
+      3) 刚从 example 生成的新配置本来就没有旧内容，不留无意义备份。
+
+    返回 (config_path, 备份路径或 "")。
     """
     path = config_path or DEFAULT_CONFIG
     bak = ""
+    base_dir = config_base(path)
+    ex = example if os.path.isabs(example) else os.path.join(base_dir, example)
+    created = is_generated(path)   # 同一次运行里安装器刚生成的那份
     if not os.path.isfile(path):
-        base_dir = config_base(path)
-        ex = example if os.path.isabs(example) else os.path.join(base_dir, example)
         if os.path.isfile(ex):
             shutil.copyfile(ex, path)
+            created = True
+            mark_generated(path)
         else:
             os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
             _write_text_atomic(path, "# Token-Governance 配置（setup.py 生成）\n"
                                      "memory_root: \"%s\"\n" % str(value).replace("\\", "/"))
             return path, bak
-    with open(path, encoding="utf-8") as f:
-        lines = f.read().splitlines()
+    if not created:
+        # 也可能是同一次运行里刚由安装器从 example 生成的：内容仍与模板逐字节一致
+        # 就当作「新配置」，没有可回滚的旧内容，不该留备份。
+        try:
+            with open(path, "rb") as f:
+                cur = f.read()
+            if os.path.isfile(ex):
+                with open(ex, "rb") as f:
+                    created = cur == f.read()
+        except OSError:
+            created = False
+    old, nl = _read_text_and_nl(path)
+    lines = old.splitlines() if old else []
     newline = 'memory_root: "%s"' % str(value).replace("\\", "/")
     hit = False
     for i, s in enumerate(lines):
@@ -400,9 +456,17 @@ def write_memory_root(config_path=DEFAULT_CONFIG, value="", example="config.exam
             break
     if not hit:
         lines.append(newline)
-    bak = path + ".bak-memory-root-" + time.strftime("%Y%m%d-%H%M%S")
-    shutil.copyfile(path, bak)
-    _write_text_atomic(path, "\n".join(lines).rstrip("\n") + "\n")
+    new = nl.join(lines)
+    if not new.endswith(nl):
+        new += nl
+    data = new.encode("utf-8")
+    with open(path, "rb") as f:
+        if f.read() == data:
+            return path, ""          # 已经是目标值：不写、不留备份
+    if not created:
+        bak = path + ".bak-memory-root-" + time.strftime("%Y%m%d-%H%M%S")
+        shutil.copyfile(path, bak)
+    _write_bytes_atomic(path, data)
     return path, bak
 
 

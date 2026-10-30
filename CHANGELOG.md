@@ -3,6 +3,81 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.3.0 — 2026-10-30（一条命令安装；预检不再静默、不再把已装的自己判成冲突）
+
+- 新增 `scripts/install.py`：一条命令完成「探测 DSH home → 写 config.yaml（`dsh_home` /
+  `skills_dir` / `memory_root`）→ 复制 10 个技能 → 自检」。幂等：重跑只更新技能文件，
+  不覆盖已配的 `memory_root` 与价表。参数：`--dry-run` / `--check` / `--dsh-home` /
+  `--skills-dir` / `--memory-root` / `--yes` / `--with-guard`。
+  起因：手动六步里 `skills_dir` 还留着 `~/.dsh/skills`，桌面版上预检会直接「拒绝」。
+- 修预检三处新用户必踩的坑：
+  1) 没有近 7 天会话时，`schema_budget.pick_session` 的 `sys.exit` 穿透 `except Exception`，
+     预检把整段判定吞掉、只剩「近 7 天没有会话文件」一行。改为 `strict=False` 返回空表；
+     `tests/first_run.py` 增加「预检必须给出判定」断言，`run_tests` 增加空 home 用例。
+  2) 照 README 先拷技能再预检会报 10 条「同名技能」冲突。现在安装目录的 SKILL.md 与本包
+     逐字节一致时显示「已安装技能」并放行，内容不同才判冲突。
+  3) `setup.py` 刚建的记忆根（只有 `README.md` + `_template`）被当成「记忆根非空」。
+     现在识别为安装脚手架，不计数。
+- 预检的 `skills_dir` 解析：配置里仍是 `~/.dsh/skills` 且不存在、而 `<dsh_home>/skills` 存在时，
+  自动改看后者，不再「拒绝：技能目录不可用」。
+- `detect_home.py` 同时输出 `dsh_home` 与 `skills_dir` 两行（`--emit-config` 同），
+  新用户不用猜第二行。
+- 文档：README「安装」改为「一条命令（推荐）」+ 修正后的手动六步；PowerShell 复制命令补
+  `New-Item -ItemType Directory -Force`、去掉尾部反斜杠、加 `-Force`（目标 `skills` 不存在时
+  旧写法报「无法将容器复制到现有叶项」，重复安装也不幂等）；getting-started 补 4 条常见问题。
+- 修 doctor 在新装当天的误导：窗口内没有任何会话时，旧版会建议「10 个已装技能 0 调用 → 删掉」，
+  现在没有数据就只给 first-run（`has_window` 门控）。
+- 评审回修（独立评审 4 条中危，全部采纳）：
+  1) `install.py` 的配置/环境候选也要求结构证据，空壳 `~/.dsh` 不再被采信，继续探测；
+  2) `preflight.py` 的 `skills_dir` 回退只认「`<home>/skills` 里真含 `tg-*`」，
+     空目录或别的技能库仍判拒绝（否则把 rc=2 伪装成 rc=0）；
+  3) `install.py` 的「下一步」改用 `sys.executable`、路径加引号、doctor 补 `--config`，
+     空格/中文路径与只有 `python3` 的机器可照抄；
+  4) `README_EN.md` 补 `python` / `python3` 替换说明。
+- 测试：167 → 192 项（空 home 预检给判定 / 已装技能不判冲突 / 安装器 dry-run、真装、复跑、
+  `--check` / 坏配置覆盖 `install.py` / 新装当天不劝删技能 / 空 `<home>/skills` 不冒充放行 /
+  **零参数新 clone 路径**、**它打印的下一步可照抄**、**`--check` 比对内容**、
+  **复跑不改配置字节**、**写不进去不抛 traceback**、**`$DSH_HOME` 不存在时硬失败**、
+  **下一步用绝对路径** / **全新安装不留无效备份** / **记忆根建不了给人话** /
+  **下一步经 cmd 与 PowerShell 真执行** / **技能内文件缺失判失败** / **空 skills_dir 不再冒充放行**）。
+- 补测「真新用户」这一段（2026-10-30 端到端跑出来才发现的缺口）：
+  1) 之前所有安装用例都显式传 `--config/--dsh-home/--memory-root`，而新用户是零参数跑、
+     靠 `config.yaml` 自己按 example 生成、`skills_dir` 自己落到 `<home>/skills` —— 现在有两条
+     断言把这条路钉住，并把 `install.py` 打印的「下一步」原样执行一遍（`preflight` 必须放行）。
+  2) `tests/first_run.py` 原先继承宿主环境，若机器上设了 `TG_MEMORY_ROOT`（TG 老用户、CI 变量
+     常见），第 8c 步「未配置 + 非交互 → 预期 rc=2」会读到宿主记忆根返回 0，测试假红。
+     现在它自清 `TG_MEMORY_ROOT` / `DSH_HOME`——它模拟的是一台没装过 TG 的机器；
+     `run_tests` 的第 18 条也故意带脏环境跑，防止回退。
+- 评审回修（独立评审 5 条，全部采纳；同一份结论由两个隔离实例各测一遍）：
+  1) 显式 `$DSH_HOME` 被静默丢弃：指向不存在目录时旧版会改用自动探测到的**另一套** home
+     并 rc=0「安装完成」——等于把技能写进另一个真实安装。现在显式 home 不存在就 rc=2 并说清
+     是 `$DSH_HOME` 给的；只有 config.yaml 里的空壳默认值才继续往下探测。
+  2) `--check` 只验 SKILL.md 存在 + frontmatter name，内容换掉也报「检查通过」。现在**逐文件
+     比对整棵技能目录**（缺文件/内容不同/嵌套目录没落地都算没装好），并提示「重跑 install.py 会覆盖」。
+  3) 「下一步」打印的是相对路径 `scripts/preflight.py`，换 cwd 照抄就 `can't open file`。
+     现在打印绝对路径（解释器用 `sys.executable`），任意目录可照抄。
+  4) 路径不可写（`--skills-dir` 是文件、`--config` 父目录是文件）直接 traceback。现在两处
+     都包成 `[FAIL]`/`[warn]` 的人话 + rc=1；`os.makedirs` 移进 `try` 内。
+  5) 每次重跑都整篇重写 config.yaml（CRLF→LF，diff 全红）并留一份 `.bak-install-*`。现在
+     按原换行风格写、内容没变就不写也不备份。
+  6) 收敛复核又抓到两处同类残留：全新安装仍会留下 `.bak-install-*` / `.bak-memory-root-*`
+     （同一次运行里第二次改写时「刚生成的模板」识别丢了）；`--memory-root` 落在文件底下时
+     `ensure_memory_layout` 抛 traceback。现在 `tg_common` 记「本进程刚生成的配置」
+     （`mark_generated` / `is_generated`），刚生成的配置不留备份、用户改过的配置仍留一份；
+     安装器在写完记忆根后补一次「真能建」的检查，建不了给 `[FAIL]` + rc=1。
+     备注意见：为「不留假备份」加了一条反向用例——用户配置真被改时必须留回滚点，避免优化过头。
+  7) 第三轮复核（另一次独立实例）又抓到三处「看起来成功」：
+     a) 「下一步」把解释器路径也加了引号，PowerShell 里原样粘贴直接 `ParserError`（cmd 正常）。
+        现在只写命令名 `python`（PATH 里没有时退回完整路径并提示 `&` 前缀），路径仍绝对；
+        用例改成**经 cmd 与 PowerShell 真执行打印出的整行**，不再只拆参数调 subprocess。
+     b) 技能树里嵌套文件写不进时（`templates/` 被同名文件占住）旧版只打 `[warn]` 就继续、
+        仍打印「安装完成」rc=0。现在 `copy_skills` 返回失败清单并判 rc=1，`verify` 也从
+        「只比 SKILL.md」改成**逐文件比对整棵技能目录**（缺文件/内容不同都算没装好）。
+     c) `preflight` 只看 `skills_dir` 在不在，空目录也判「放行」，与 `install.py --check`
+        的 rc=1 自相矛盾。现在：一个 `tg-*` 都没有 → 待确认（附「跑 install.py」）；
+        只装了一部分 → 只提示不阻断。
+- 版本面：v1.2.0 → v1.3.0；`data/counts.json`、README 徽章与正文计数同步。
+
 ## v1.2.0 — 2026-10-30（循环守卫 v0.2：思考级空转三条代理规则）
 
 - `dsh-loop-guard` **0.1.1 → 0.2.0**：工具级重复之外再加一层**思考级空转**代理检测。同一状态机在

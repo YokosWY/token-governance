@@ -166,6 +166,6 @@ byProviderModel`，所以 `cost_summary.py`、`cache_audit.py`、`doctor.py` 的
 python scripts/ledger.py ingest && python scripts/ledger.py verify
 python scripts/ledger.py prices export && python scripts/ledger.py prices check
 python scripts/cost_summary.py --days 7          # 数字应与 ledger report 一致
-python tests/run_tests.py                        # 167 项，含多模型计价 12 项
+python tests/run_tests.py                        # 192 项，含多模型计价 12 项
 ```
 

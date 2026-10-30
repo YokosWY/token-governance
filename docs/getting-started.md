@@ -16,11 +16,14 @@
 
 ## 1. 装完先跑五步
 
+装的时候优先用一条命令：`python scripts/install.py`（自动探测 home、写配置、拷技能、自检；
+`--dry-run` 只看计划）。手动装的人按 README 的六步走，下面五项是装完后的核对：
+
 | 步 | 命令 | 正常长什么样 | 不对怎么办 |
 |---|---|---|---|
 | 1 依赖 | `python scripts/env_check.py` | 必需项全绿，退出码 0 | 按提示装 `pyyaml` / `zstandard`（或系统 `zstd`） |
-| 2 数据目录 | `python scripts/detect_home.py` | 打印一行可粘贴的 `dsh_home:` 片段 | 多套 DSH 时逐个试，选 `sessions/` 里日志最多的那个 |
-| 3 配置 | `cp config.example.yaml config.yaml`，填 `dsh_home` | 文件里有 `dsh_home` / `memory_root` / `skills_dir` | 别猜 `~/.dsh`：桌面版 home 由安装位置决定，可能在任意盘 |
+| 2 数据目录 | `python scripts/detect_home.py` | 打印可粘贴的 `dsh_home:` 与 `skills_dir:` 两行 | 多套 DSH 时逐个试，选 `sessions/` 里日志最多的那个 |
+| 3 配置 | `cp config.example.yaml config.yaml`，填两行 | 文件里有 `dsh_home` / `memory_root` / `skills_dir` | 别猜 `~/.dsh`：桌面版 home 由安装位置决定，可能在任意盘 |
 | 4 对话夹 | `python scripts/setup.py` | 问一句「放在哪」，回车用默认 `~/Documents/tg-memory`，建好并写回 `memory_root` | 无人值守给 `--memory-root <路径>` 或 `--yes`；不配也不会静默落到 `~/tg-memory` |
 | 5 预检 | `python scripts/preflight.py --config config.yaml` | 「放行（退出码 0）」 | `1` = 待确认，逐条看冲突项；`2` = 拒绝，先修再继续 |
 
@@ -114,7 +117,11 @@ python scripts/patch_snapshot.py --restore latest           # 不行就回滚（
 | 「解压需要二选一」 | 缺 `zstandard` 与 `zstd` | `pip install zstandard`，或装系统 `zstd` |
 | `python` 打不开或跳商店 | Windows 应用别名占位 | 用 `py -3` 或直接指定解释器路径 |
 | PowerShell 里复制到盘根 | `$DSH_HOME` 展开为空 | 显式 `$dshHome = "..."` + `Copy-Item -Recurse` |
-| 技能装了没反应 | 没重启 / 目录不对 | 确认 `skills_dir` 下有 `tg-router/SKILL.md`，重启 DSH |
+| PowerShell 报「无法将容器复制到现有叶项」 | 目标 `skills` 目录不存在，或命令带了尾部反斜杠 | 先 `New-Item -ItemType Directory -Force "$dshHome\skills"`，再 `Copy-Item -Recurse -Force skills\tg-* "$dshHome\skills"`（不带尾斜杠） |
+| 预检「拒绝：技能目录不可用」 | `config.yaml` 的 `skills_dir` 还是 `~/.dsh/skills` | 改成 `<dsh_home>/skills`；新版预检会自动改看该目录 |
+| 预检「待确认 · 同名技能」 | 装完之后又跑了一次预检 | 内容一致会显示「已安装技能」并放行；内容不同才是真冲突 |
+| 预检「待确认 · 缺技能」 | `skills_dir` 里一个 `tg-*` 都没有（目录指错，或还没装） | 跑 `python scripts/install.py`；只装了部分技能只提示不阻断，一个都没有才判「待确认」 |
+| 技能装了没反应 | 没重启 / 目录不对 | 确认 `skills_dir` 下有 `tg-router/SKILL.md`，重启 DSH；`python scripts/install.py --check` |
 | 金额带「含估算」 | 价表没覆盖某个模型 | 在 `prices_usd_per_mtok` 补该模型；账本会记 `pricing.unmatched` |
 | doctor 与 cost_summary 对不上 | 窗口不同 / 一个按实付一个按折算 | 先用同一 `--days`；账本有实付时以实付为准 |
 | 工具数忽多忽少 | MCP 隔离、preset 切换 | 用 `schema_budget.py` 按服务看，别只看总数 |

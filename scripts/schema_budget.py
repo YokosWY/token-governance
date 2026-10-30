@@ -108,20 +108,27 @@ def load_dsh_home(config_path, arg=""):
     return resolve_dsh_home(arg, cfg=cfg, base=base)
 
 
-def pick_session(dsh_home, session, days, limit=8):
+def pick_session(dsh_home, session, days, limit=8, strict=True):
     """返回 [(路径, 会话 id)]。session 指定时只回一个；否则按时间倒序多取几个。
 
     多取几个的原因：最新那个会话可能刚开始写、还没有 request/header，
     调用方要能往下顺延，而不是把「没有 header」当成错误。
+
+    strict=False 时不 sys.exit，返回 []：预检把本函数当库用，一次 SystemExit
+    会把「放行 / 待确认」的判定整段吞掉，新机器上只看到一行「没有会话文件」。
     """
     if session:
         p = mm.find_session(dsh_home, session)
         if not p:
-            sys.exit(f"找不到会话: {session}")
+            if strict:
+                sys.exit(f"找不到会话: {session}")
+            return []
         return [(p, os.path.basename(os.path.dirname(p)).replace("session-", "")[:8])]
     root = sessions_root(dsh_home)
     if not os.path.isdir(root):
-        sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
+        if strict:
+            sys.exit(f"找不到会话目录: {root}（检查 --dsh-home）")
+        return []
     import time
     cutoff = time.time() - days * 86400
     found = []
@@ -137,7 +144,9 @@ def pick_session(dsh_home, session, days, limit=8):
             if m >= cutoff:
                 found.append((m, p))
     if not found:
-        sys.exit(f"近 {days} 天没有会话文件；加 --days 放宽，或用 --session 指定。")
+        if strict:
+            sys.exit(f"近 {days} 天没有会话文件；加 --days 放宽，或用 --session 指定。")
+        return []
     found.sort(reverse=True)
     return [(p, os.path.basename(os.path.dirname(p)).replace("session-", "")[:8])
             for _, p in found[:limit]]

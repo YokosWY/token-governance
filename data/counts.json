@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
-  "scripts": 27,
+  "version": "1.3.0",
+  "scripts": 28,
   "skills": 10,
-  "tests": 167,
+  "tests": 192,
   "note": "README 徽章与正文计数的单一真相；改脚本/技能/测试数量必须同步这里，audit_pack 与测试套件都会核对。"
 }

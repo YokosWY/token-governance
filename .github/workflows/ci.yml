@@ -21,7 +21,7 @@ jobs:
           pip install zstandard pyyaml
       - name: 环境自检（Python / pyyaml / 解压器 / node / dsh_home）
         run: python scripts/env_check.py --json
-      - name: 回归测试（136 项）
+      - name: 回归测试（192 项）
         run: python tests/run_tests.py
       - name: 包自检（结构 / 引用 / 陈旧词 / 数字单源）
         run: python scripts/audit_pack.py

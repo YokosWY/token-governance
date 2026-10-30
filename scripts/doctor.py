@@ -141,11 +141,12 @@ def build_actions(data):
                 "estimate": f"失败轮次的成本要单算；先把 {fmt_int(proto)} 次协议错误压掉，比重试便宜",
             })
 
-    # 3. 技能：装了但从不调用
+    # 3. 技能：装了但从不调用（窗口里有数据才算；新装当天没会话时不要叫人删技能）
     su = data.get("skills") or {}
     never = su.get("never_used") or []
     tg_inst = su.get("tg_installed") or {}
-    if never:
+    has_window = bool(data.get("schema")) or bool(turns) or bool(fa.get("failed_calls"))
+    if never and has_window:
         acts.append({
             "id": "skill-idle",
             "severity": "低",
@@ -156,7 +157,7 @@ def build_actions(data):
             "command": "python scripts/skill_usage.py --days 7",
             "estimate": "省的是目录与心智，不是每步字节",
         })
-    elif tg_inst:
+    elif tg_inst and has_window:
         idle = [k for k, v in tg_inst.items() if v == "待机"]
         if idle:
             acts.append({

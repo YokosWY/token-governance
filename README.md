@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.2.0-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.3.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-27-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-167-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-28-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-192-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、27 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
+> 10 个技能、28 个脚本、1 个插件；装在 DeepSeek Harness 的配置层上。
 > 必需依赖三项：Python 3.9+、pyyaml、解压器（`pip install zstandard` 或 `zstd` 命令，二选一）；Node 18+ 仅用于守卫自检。
 > 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
@@ -77,7 +77,7 @@ TG 体检 · 2026-10-23 16:23（回看 7 天）
   [1] 低  schema 接近预算上限 …（每条都给命令与预估）
 ```
 
-`preflight` 的判定分三档：**放行 0 / 待确认 1 / 拒绝 2**。冲突项逐条列出，包括同名技能、非空记忆根、已存在的补丁条目、覆盖块漂移与插件名漂移。
+`preflight` 的判定分三档：**放行 0 / 待确认 1 / 拒绝 2**。冲突项逐条列出，包括同名技能、**缺技能（`skills_dir` 里一个 `tg-*` 都没有 → 待确认，别再冒充放行）**、非空记忆根、已存在的补丁条目、覆盖块漂移与插件名漂移。
 
 ## 安装
 
@@ -90,24 +90,50 @@ TG 体检 · 2026-10-23 16:23（回看 7 天）
 | 必需（二选一） | `zstandard` 模块 或 `zstd` 命令 | 解压 `session.v4.jsonl.zstd` | 看账类脚本报「解压需要二选一」 | 首选 `pip install zstandard`（跨平台、CI 同款）；也可装系统包：macOS `brew install zstd`、Debian/Ubuntu `apt install zstd`。Windows 不保证自带 `zstd.exe` |
 | 可选 | Node 18+ | `verify_guard.mjs` 守卫自检 | 只少这一项自检 | `node --version` 能跑即可 |
 
-一条命令核对：
+先核对依赖：
 
 ```bash
 python scripts/env_check.py            # 必需/可选/信息三档，缺项给修复命令；必需项缺失时退出码 1
 python scripts/env_check.py --json     # 给安装脚本或 CI 读
 ```
 
+### 一条命令（推荐）
+
 ```bash
-# 1) 先自动找 DSH 数据目录。别猜 ~/.dsh：桌面版 home 由安装位置决定，可以是任意盘任意目录
-python scripts/detect_home.py                     # 输出可直接粘贴的 dsh_home 片段
-cp config.example.yaml config.yaml                # 2) 把上一步那行填进 dsh_home（skills_dir 同看）
-python scripts/setup.py                           # 3) 问对话夹母文件夹放哪并建好（默认 ~/Documents/tg-memory）
-python scripts/env_check.py                       # 4) 依赖齐不齐（缺必需项时退出码 1）
-cp -r skills/tg-* "$DSH_HOME/skills/"             # 5) 技能入目录，重启 DSH 后生效
-python scripts/preflight.py --config config.yaml  # 6) 只读预检：放行 0 / 待确认 1 / 拒绝 2
+python scripts/install.py          # 自动探测 home → 写 config.yaml → 拷技能 → 自检
 ```
 
-> 第 3 步会问一次「对话夹放哪」，回车即用默认的 `~/Documents/tg-memory`；回答后写进
+它做四件事：按 `detect_home` 的打分找 DSH home；把 `dsh_home` / `skills_dir` 写进
+`config.yaml`（没有就按 `config.example.yaml` 生成）；把 `skills/tg-*` 复制到
+`<dsh_home>/skills`；最后检查 10 个 `SKILL.md` 的 frontmatter。幂等：重跑只更新技能文件，
+不覆盖 `memory_root` 与价格表。**重启 DSH 后生效。**
+
+常用参数：`--dry-run` 只看计划；`--dsh-home <路径>` 手工指定；`--yes` 全用默认值；
+`--with-guard` 顺带装循环守卫；`--check` 只检查安装结果。
+
+### 手动安装（想逐步控制，或安装器报错时照着排查）
+
+```bash
+# 1) 依赖：Python / pyyaml / 解压器 / node
+python scripts/env_check.py
+# 2) 找 DSH 数据目录。别猜 ~/.dsh：桌面版 home 由安装位置决定，可以是任意盘任意目录
+python scripts/detect_home.py            # 会同时打印 dsh_home 与 skills_dir 两行
+# 3) 按它给的两行生成配置
+cp config.example.yaml config.yaml       # 再把那两行填进去
+# 4) 对话夹母文件夹（会问一次放哪，回车用默认 ~/Documents/tg-memory）
+python scripts/setup.py
+# 5) 技能入目录（bash）
+mkdir -p "$DSH_HOME/skills" && cp -r skills/tg-* "$DSH_HOME/skills/"
+# 6) 只读预检
+python scripts/preflight.py --config config.yaml
+```
+
+> 第 6 步在拷贝之后跑是正常的：会列出 10 条「已安装技能（内容与本包一致）」并判定**放行**。
+> 只有显示「同名技能（内容不同）」时才需要裁决——那说明技能被改过，或装的是别的版本。
+> 预检判定：**放行 0 / 待确认 1 / 拒绝 2**。`拒绝` 通常是 `skills_dir` 没指向
+> `<dsh_home>/skills`；预检会自动改看该目录，仍拒绝就把它写进 `config.yaml`。
+
+> 第 4 步会问一次「对话夹放哪」，回车即用默认的 `~/Documents/tg-memory`；回答后写进
 > `config.yaml` 的 `memory_root`，之后所有脚本共用。无人值守时给
 > `python scripts/setup.py --memory-root <路径>` 或 `--yes`（用默认）。
 > 不配也不会再静默落到 `~/tg-memory`：脚本会报「未配置」并给出这条命令。
@@ -116,12 +142,15 @@ python scripts/preflight.py --config config.yaml  # 6) 只读预检：放行 0 /
 > 或是 Windows 商店的占位别名）。下面所有 `python scripts/...` 在那些机器上换成 `python3 scripts/...` 即可。
 
 同一组命令在 **PowerShell** 里不能照抄：`$DSH_HOME` 是 bash 写法，PowerShell 里会展开成空串，
-`cp -r ... "$DSH_HOME/skills/"` 就变成往当前盘根目录写；`cp -r` 也不是 bash 的递归复制。对应写法：
+`cp -r ... "$DSH_HOME/skills/"` 就变成往当前盘根目录写；`cp -r` 也不是 bash 的递归复制。
+另外**目标目录不存在时** `Copy-Item -Recurse skills\tg-* "$dshHome\skills\"` 会报
+「无法将容器复制到现有叶项」，重复安装还会因同名项报错。对应写法：
 
 ```powershell
 # 把 detect_home.py 建议的路径填进来（这一步就是替代 bash 里的 $DSH_HOME）
 $dshHome = "E:/apps/dsh"
-Copy-Item -Recurse skills\tg-* "$dshHome\skills\"
+New-Item -ItemType Directory -Force "$dshHome\skills" | Out-Null
+Copy-Item -Recurse -Force skills\tg-* "$dshHome\skills"   # 不要带尾部反斜杠
 Copy-Item config.example.yaml config.yaml
 python scripts\preflight.py --config config.yaml
 ```
@@ -177,10 +206,11 @@ python scripts/cost_summary.py --config config.yaml --days 3
 | `tg-ops` | 补丁分层、备份、回滚、升级漂移 | 待机 |
 | `tg-loop` | 循环守卫的处置流程 | 待机 |
 
-### 脚本（26 个）
+### 脚本（28 个）
 
 | 组 | 脚本 | 解决什么 |
 |---|---|---|
+| 安装 | `install` | 一条命令探测 home、写配置、拷技能、自检（幂等，可 dry-run / check） |
 | 体检 | `env_check` / `detect_home` / `doctor` / `schema_budget` | 换机器先查依赖与数据目录；自动探测 DSH home（别猜 `~/.dsh`）；报计价来源（价表 / 汇率 / 时区）；一条命令出结论与动作；工具 schema 按服务归因、卡预算 |
 | 看账 | `ledger` / `cost_summary` / `cache_audit` / `compare_days` | 从会话日志重建账本（日/模型/会话）；花了多少、命中多少、按天趋势；**价表没覆盖的模型会计入 `pricing.unmatched` 并报「含估算」**，不再静默套默认价 |
 | 拆账 | `measure_modules` / `turn_cost` / `failure_analysis` / `retry_patterns` / `skill_usage` | 钱花在哪个模块、哪一轮、哪类失败 |
@@ -200,9 +230,9 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 27 个脚本：体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
+  scripts/                     # 28 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
-  tests/                       # 152 项断言 + fixtures
+  tests/                       # 192 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
@@ -218,7 +248,7 @@ token-governance/
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 152 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 192 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
@@ -334,6 +364,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
+| v1.3.0 | `install.py` 一条命令安装；预检修三处新用户阻塞（无会话时静默退出、装完误报 10 条同名技能、记忆根误报非空），`skills_dir` 自动回退 `<home>/skills`；`detect_home` 同时给两行；测试 192 项 |
 | v0.14.0 | 账本 v2：`ledger.py` 从会话日志派生日/模型/会话三级成本（幂等 + 文件级缓存），替代已卸载的 `dsh-cost-meter`；`tg_common` 补 3.14 内建 `compression.zstd` 与 `ledger_paths`；下游 `cost_summary`/`cache_audit`/`env_check` 兼容新旧账本；测试 132 项 |
 | v0.13.1 | 首次上手成门禁（`tests/first_run.py` + CI job）；`install_guard --config`；测试 126 项 |
 | v0.13.0 | `env_check` 环境自检；缺依赖不抛 traceback；`check_yaml`/`new_session` 错误处理；依赖分级写进 README；`doctor` 空数据给 first-run 并支持 `--dsh-home`；CI 修复 + 跨平台矩阵；测试 126 项 |

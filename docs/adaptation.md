@@ -198,12 +198,15 @@
 | 1 | 自检说缺解压器，脚本却跑得动 | 去掉 PATH 里的 `zstd`，再用假 `zstandard.py` 让 import 失败 | v0.14.1 前 `env_check` 判「必需项缺失、退出码 1」，而 `decompress_bytes` 走 Python 3.14 内建 `compression.zstd` 成功解出 1.5 MB 会话。**门禁比实现严**，用户被指去装用不到的包。现在两者同用 `unzip_channels()` |
 | 2 | 同一包里脚本互相矛盾 | 同一环境分别跑 `baseline.py` 与 `retry_patterns.py` | 后者自带一份旧解压实现（没有内建通道），会说「解压需要二选一」。现在统一走 `tg_common` |
 | 3 | 默认 `~/.dsh` 猜错 → 报「没有数据」 | 三套 home 并存：安装目录、`安装目录/home`、`%APPDATA%/<产品>/home`（后者只有一个 `desktop-next-location.json` 指针） | `detect_home.py` 读指针文件并按结构证据打分；无 config 时也能命中真实 home |
-| 4 | 照抄 README 的安装命令写错位置 | PowerShell 里 `$DSH_HOME` 为空 → 命令变成 `cp -r skills/tg-* "/skills/"` | README 已给 PowerShell 版（`$env:DSH_HOME` / `Copy-Item -Recurse`） |
+| 4 | 照抄 README 的安装命令写错位置 | PowerShell 里 `$DSH_HOME` 为空 → 命令变成 `cp -r skills/tg-* "/skills/"`；目标 `skills` 不存在时 `Copy-Item -Recurse skills\tg-* "$dshHome\skills\"` 报「无法将容器复制到现有叶项」 | README 改为先 `New-Item -ItemType Directory -Force` 建目录，再 `Copy-Item -Recurse -Force` 且不带尾反斜杠；或直接用 `install.py` |
 | 5 | macOS / Linux 第一步 command not found | 文档命令全是 `python ...`，`python3` 一次都没出现 | README 顶部与安装段已说明两者对应关系 |
 | 6 | 写死的本机路径逃过自检 | `scripts/verify_guard.mjs` 里写死的上游路径（盘符 + 本机目录名） | 旧 `audit_pack` 只扫 `.md/.py/.yaml/.yml`，且正则只认反斜杠 → 长期漏检。现在扫 `.mjs/.js/.cmd/.sh/.ps1/.json`，正反斜杠都认 |
 | 7 | 只装 `skills/` 时，SKILL.md 里所有 `python scripts/*.py` 全失效 | 把 `scripts/` 挪走，再按 SKILL.md 的指引执行 | 现在 `tg-router` 先跑 `ls scripts/tg_common.py` 判形态；形态 B 只讲口径、明确要求补仓库、**禁止给没跑过的数** |
 | 8 | 换模型后静默按默认价算钱 | 用 `anthropic:claude-sonnet-4`、`gpt-5.1` 这类名字过 `price_for` | 都落到 `default`（DeepSeek 价），报告却看起来完全正常。现在账本记 `pricing.unmatched`，`ingest` 与 `cost_summary` 都报「含估算」；本机真账本抓到 `unknown:unknown` 8 次（此前完全静默） |
 | 9 | CI 只测 3.10/3.12，3.13/3.14 的行为没人守 | v0.14.1 的门禁 bug 只有本机 3.14 暴露，CI 一直全绿 | matrix 扩到 3.10/3.12/3.13/3.14，另加 `py314-windows` job **故意不装 zstandard**，专守内建解压这一支 |
+| 10 | 新机器上预检什么都不说，只回一行「近 7 天没有会话文件」 | 空 home 跑 `preflight.py`：`schema_budget.pick_session` 的 `sys.exit` 穿透 `except Exception` | 判定整段被吞、退出码 1。现改 `strict=False` 返回空表，体检兜底同时接 `SystemExit`；`first_run` 加断言 |
+| 11 | 照文档装完，预检报 10 项「同名技能」冲突 | 先 `cp -r skills/tg-*` 再 `preflight`（README 原顺序） | 内容一致改判「已安装技能」并放行；`setup.py` 刚建的记忆根（只有 README + _template）也不再算「非空」 |
+| 12 | 预检「拒绝：技能目录不可用」 | 桌面版 home 不在 `~/.dsh`，`config.yaml` 的 `skills_dir` 还是默认值 | 预检自动改看 `<dsh_home>/skills`；`detect_home` 直接打印这行；`install.py` 写进配置 |
 
 **没被证实但仍需防**：企业网关下的单价缺失、只读目录（公司机）、无网络环境（CI 永远能 `pip install`）、
 中文用户名下的第三方工具（本包自身已有用例覆盖，但 `pwsh`/`zstd` 之类外部程序的行为未测）。

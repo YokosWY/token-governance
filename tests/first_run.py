@@ -34,6 +34,11 @@ failures = []
 def run(name, args, expect=(0,), cwd=None, env=None):
     e = dict(os.environ)
     e["PYTHONIOENCODING"] = "utf-8"
+    # 「空机器」必须是真的空：宿主若设了 TG_MEMORY_ROOT / DSH_HOME（TG 老用户、CI 变量常见），
+    # 第 8c 步「未配置 + 非交互 → 预期 rc=2」会读到宿主的记忆根而拿到 0，变成假失败。
+    # 口径：本脚本模拟的是一台没装过 TG 的机器，所以这两个变量一律不继承。
+    for k in ("TG_MEMORY_ROOT", "DSH_HOME"):
+        e.pop(k, None)
     if env:
         e.update(env)
     r = subprocess.run([PY, *args], capture_output=True, text=True, encoding="utf-8",
@@ -71,9 +76,12 @@ def main():
     # 1) 复制安装段的前两步：技能入目录 + 配置就位（用 cp -r 等价：只判存在性）
     run("env_check（空机器：必需项在，数据目录空）", [os.path.join(SCRIPTS, "env_check.py"),
                                               "--config", cfg])
-    # 2) 预检：没有会话/账本时允许「待确认」，但不能崩
-    run("preflight（空机器）", [os.path.join(SCRIPTS, "preflight.py"), "--config", cfg],
-        expect=(0, 1, 2))
+    # 2) 预检：没有会话/账本时允许「待确认」，但不能崩，也不能只有一行「没有会话文件」
+    r = run("preflight（空机器）", [os.path.join(SCRIPTS, "preflight.py"), "--config", cfg],
+            expect=(0, 1, 2))
+    if "判定" not in (r.stdout or ""):
+        failures.append(("preflight 空机器没有给出判定", ["输出被吞（SystemExit？）"], []))
+        print("FAIL preflight 空机器没有给出判定")
     # 3) 体检单：必须给 first-run 而不是空清单
     r = run("doctor（空机器）", [os.path.join(SCRIPTS, "doctor.py"), "--config", cfg,
                              "--days", "1", "--json"])

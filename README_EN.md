@@ -5,7 +5,7 @@ English | [简体中文](README.md)
 A skill pack for measuring and reducing context cost of LLM agents. It reads per-step
 usage logs, breaks the bill down to modules, then shrinks what gets resent every step.
 
-10 skills, 27 scripts, 1 plugin. Two required dependencies: Python 3.9+ and pyyaml;
+10 skills, 28 scripts, 1 plugin. Two required dependencies: Python 3.9+ and pyyaml;
 unzipping session logs also needs either the `zstd` binary or the `zstandard` module,
 and Node is only needed for the guard self-check. Run `python scripts/env_check.py` on a
 new machine. Runs on the configuration layer of DeepSeek Harness.
@@ -58,11 +58,28 @@ python scripts/env_check.py           # required / optional / info, with fix com
 python tests/first_run.py             # first-run: 10 install-step commands against an empty home
 ```
 
+> On macOS and most Linux distributions only `python3` exists (a bare `python` may be missing,
+> or a Windows Store placeholder). Replace `python` with `python3` in every command below.
+
 ```bash
-cp -r skills/tg-* "$DSH_HOME/skills/"              # 1) skills, effective after restart
-cp config.example.yaml config.yaml                 # 2) edit dsh_home, memory_root, skills_dir
-python scripts/preflight.py --config config.yaml   # 3) read-only: 0 pass / 1 review / 2 refuse
+# one command (recommended): detect home, write config, copy skills, self-check
+python scripts/install.py            # --dry-run / --check / --dsh-home <path> / --yes
 ```
+
+Manual install:
+
+```bash
+python scripts/detect_home.py                      # prints dsh_home AND skills_dir
+cp config.example.yaml config.yaml                 # paste both lines
+python scripts/setup.py                            # conversation-folder root
+mkdir -p "$DSH_HOME/skills" && cp -r skills/tg-* "$DSH_HOME/skills/"
+python scripts/preflight.py --config config.yaml   # 0 pass / 1 review / 2 refuse
+```
+
+PowerShell: create the target first, then copy without a trailing backslash —
+`New-Item -ItemType Directory -Force "$dshHome\skills" | Out-Null` followed by
+`Copy-Item -Recurse -Force skills\tg-* "$dshHome\skills"`. The old one-liner with a trailing
+`\` fails when `<home>\skills` does not exist yet, and without `-Force` it also fails on re-install.
 
 Use it normally for a day: the ledger is written by cost-meter. On a fresh install the
 audit exits 1 with "no readable ledger", which is expected.

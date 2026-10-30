@@ -259,8 +259,12 @@ def main():
         return 0 if best else 1
 
     if a.emit_config:
-        print(f'dsh_home: "{best["path"].replace(os.sep, "/")}"' if best
-              else "# 没有找到 DSH home：用 --dsh-home 手工指定，或先启动一次 DSH")
+        if best:
+            p = best["path"].replace(os.sep, "/")
+            print(f'dsh_home: "{p}"')
+            print(f'skills_dir: "{p}/skills"')
+        else:
+            print("# 没有找到 DSH home：用 --dsh-home 手工指定，或先启动一次 DSH")
         return 0 if best else 1
 
     print(f"DSH home 探测 · {sys.platform}")
@@ -291,8 +295,10 @@ def main():
             bits.append("ledger")
         print(f"     证据：{'、'.join(bits) or '只有目录'}   来源：{c['source']}")
     print()
-    print("把它填进 config.yaml（复制 config.example.yaml 后改这一行）：")
-    print(f'  dsh_home: "{cands[0]["path"].replace(os.sep, "/")}"')
+    print("把它填进 config.yaml（复制 config.example.yaml 后改这两行）：")
+    main_path = cands[0]["path"].replace(os.sep, "/")
+    print(f'  dsh_home: "{main_path}"')
+    print(f'  skills_dir: "{main_path}/skills"   # 桌面版的技能就在 home 下；默认 ~/.dsh/skills 多半不对')
     print()
     print("多条都要看（两套客户端并存）时用列表：")
     for c in cands[:3]:
