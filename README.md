@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.4.1-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.5.1-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
-<img alt="scripts" src="https://img.shields.io/badge/scripts-29-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-203-2f6f4f?style=flat-square">
+<img alt="scripts" src="https://img.shields.io/badge/scripts-30-6B6A66?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-216-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -22,7 +22,7 @@
 > *A skill pack that measures and reduces context cost for LLM agents:
 > break the bill down to modules from per-step usage logs, then shrink what gets resent every step.*
 >
-> 10 个技能、29 个脚本、2 个插件；装在 DeepSeek Harness 的配置层上。
+> 10 个技能、30 个脚本、2 个插件；装在 DeepSeek Harness 的配置层上。
 > 必需依赖三项：Python 3.9+、pyyaml、解压器（`pip install zstandard` 或 `zstd` 命令，二选一）；Node 18+ 仅用于守卫自检。
 > 换机器先跑 `python scripts/env_check.py` 确认环境。
 > 日常入口是 `python scripts/doctor.py`：一条命令把体积、缓存、成本、失败合成一页，给出带预估的动作。
@@ -233,10 +233,10 @@ token-governance/
   config.example.yaml          # 三行必改，其余可选
   data/metrics.json            # 文档数字的唯一来源
   skills/                      # 10 个技能（9 个待机）
-  scripts/                     # 29 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
+  scripts/                     # 30 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   plugins/dsh-tg-account/      # 账目胶囊插件源码（Node ≥ 22，自带 155 项断言）
-  tests/                       # 203 项断言 + fixtures
+  tests/                       # 216 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```

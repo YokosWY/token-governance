@@ -1,0 +1,4 @@
+{"type":"tool/result","data":{"message":{"content":[{"type":"text","text":"some long output line 1\nline 2\n\n[tg-trim #aaaa compressed: 1000 -> 400 bytes (~60% 更小，策略 lines-strided)。 形状：省略 20 行，3 条带行号采样，保留 1 条错误行。需要被省略的细节时，直接 read \"C:/tmp/spill-a.txt\"（或 grep 该路径）取原文，不要根据片段猜。]"}]}}}
+{"type":"tool/call","data":{"name":"read","arguments":"{\"file_path\":\"C:/tmp/spill-a.txt\",\"offset\":120,\"limit\":40}"}}
+{"type":"tool/result","data":{"message":{"content":[{"type":"text","text":"table rows\n\n[tg-trim #bbbb compressed: 800 -> 300 bytes (~62% 更小，策略 table-strided)。 形状：4 条带行号采样。需要被省略的细节时，直接 read \"C:/tmp/spill-b.txt\"（或 grep 该路径）取原文。"}]}}}
+{"type":"tool/result","data":{"message":{"content":[{"type":"text","text":"[save-token #cccc losslessly re-encoded: 200 -> 100 bytes]"}]}}}

@@ -16,7 +16,7 @@ doctor 只做两件事：把已有脚本的 JSON 汇成一页结论；把能安�
   - 不改 cordis.patch.yml，不动 preset，不删技能；这些要人裁决。
   - --apply 只做两件可回滚的事：补丁快照（patch_snapshot）、首日基线（baseline --write）。
 """
-import datetime, json, os, subprocess, sys
+import datetime, json, os, re, subprocess, sys
 
 from tg_common import utf8_stdio
 
@@ -72,6 +72,7 @@ def collect(days, dsh_home="", config=""):
         ("skills", ("skill_usage.py", "--days", str(days), "--json", *passthru)),
         ("failure", ("failure_analysis.py", "--days", str(days), "--json", *passthru)),
         ("turns", ("turn_cost.py", "--days", str(days), "--json", *passthru)),
+        ("quality", ("quality_gate.py", "--days", str(days), "--json", *passthru)),
     ]
     for key, argv in pairs:
         d, err = run_json(*argv)
@@ -194,6 +195,25 @@ def build_actions(data):
             "command": "python scripts/env_check.py",
             "estimate": "无数据时不产生成本结论，不要在这时候下判断",
         })
+    # 5. 压缩质量：真回取率（grep / 带 offset 的 read）才是「压过头」的证据，
+    #    整读只轻罚；阈值由同批策略中位×2.5 给出，不拍脑袋。
+    q = data.get("quality") or {}
+    qgr = float(q.get("gap_rate") or 0)
+    qth = float(q.get("threshold") or 0.10)
+    if q.get("events") and qgr > qth:
+        worst = max(q.get("by_strategy") or [{}], key=lambda r: r.get("gap_rate", 0))
+        acts.insert(0, {
+            "id": "quality-retrieval",
+            "severity": "高" if qgr >= qth * 2 else "中",
+            "title": f"压缩后真回取率 {qgr*100:.1f}%，高于本批基线 {qth*100:.0f}%",
+            "detail": (f"{q.get('events')} 次有损压缩，评分 {q.get('grade')}（{q.get('score')}）；"
+                       f"最高策略 {worst.get('strategy', '?')} 真回取 "
+                       f"{float(worst.get('gap_rate') or 0)*100:.0f}%；整读 {q.get('whole', 0)} 次（轻罚）"),
+            "action": "抬高该策略的压缩阈值，或对高频路径加白名单",
+            "command": "python scripts/quality_gate.py --ab --days 14",
+            "estimate": "少一次真回取 ≈ 少一次整段前缀重算",
+        })
+
     return acts[:4]
 
 
@@ -221,6 +241,46 @@ def apply_actions(dry_run):
         except Exception as e:
             done.append({"label": label, "cmd": shown, "status": f"失败（{e.__class__.__name__}）"})
     return done
+
+
+def score_components(data):
+    """组件评分：每项一个字母 + 一句修法。阈值是经验值（不是实测基线），只用来排序注意力。"""
+    rows = []
+    sch = data.get("schema") or {}
+    kb = float(sch.get("schema_kb") or 0)
+    budget = float(sch.get("budget_kb") or 0)
+    if kb and budget:
+        r = kb / budget
+        g = ("S" if r < .55 else "A" if r < .70 else "B" if r < .80
+             else "C" if r < .90 else "D" if r <= 1 else "F")
+        rows.append(["工具 schema", g, f"{kb:.0f}/{budget:.0f} KB（{r*100:.0f}%）",
+                     "把最重的一组移进 preset" if g in "CDF" else "不用动"])
+
+    cache_txt = (data.get("preflight") or {}).get("cache") or ""
+    hm = re.search(r"命中率\s*([\d.]+)%", cache_txt)
+    if hm:
+        hit = float(hm.group(1))
+        g = ("S" if hit >= 99.5 else "A" if hit >= 99 else "B" if hit >= 98
+             else "C" if hit >= 97 else "D" if hit >= 95 else "F")
+        rows.append(["缓存命中", g, f"{hit}%", "先别动改写/压缩类配置" if g in "CDF" else "不用动"])
+
+    fa = data.get("failure") or {}
+    tc = data.get("turns") or {}
+    turns = (tc.get("summary") or {}).get("turns") or 0
+    failed = fa.get("turns_with_failure") or 0
+    if turns:
+        r = failed / turns * 100
+        g = ("S" if r <= 5 else "A" if r <= 10 else "B" if r <= 20
+             else "C" if r <= 30 else "D" if r <= 40 else "F")
+        rows.append(["失败轮次", g, f"{r:.0f}%（{failed}/{turns}）",
+                     "先压协议错误：先读再改、一次一个文件" if g in "CDF" else "不用动"])
+
+    q = data.get("quality") or {}
+    if q.get("events"):
+        rows.append(["压缩质量", q.get("grade") or "-",
+                     f"均分 {q.get('score')}｜真回取 {float(q.get('gap_rate') or 0)*100:.1f}%",
+                     "抬高该策略阈值" if q.get("grade") in ("D", "F") else "不用动"])
+    return rows
 
 
 def main():
@@ -261,6 +321,12 @@ def main():
             "cost_total_cny": summ.get("cost_total"),
             "failed_turns": (data.get("failure") or {}).get("turns_with_failure"),
             "failed_calls": (data.get("failure") or {}).get("failed_calls"),
+            "quality_grade": (data.get("quality") or {}).get("grade"),
+            "quality_score": (data.get("quality") or {}).get("score"),
+            "quality_retrieval": (data.get("quality") or {}).get("retrieval_rate"),
+            "quality_gap": (data.get("quality") or {}).get("gap_rate"),
+            "quality_threshold": (data.get("quality") or {}).get("threshold"),
+            "quality_events": (data.get("quality") or {}).get("events"),
         },
         "actions": actions,
         "applied": applied,
@@ -278,12 +344,22 @@ def main():
         print(f"  体积      {m['schema_kb']} KB / {m['tools']} 个工具（预算 {m['budget_kb']} KB）")
     if m.get("cache"):
         print(f"  缓存      {m['cache']}")
+    if m.get("quality_events"):
+        print(f"  压缩质量  {m['quality_grade']}（{m['quality_score']}）"
+              f"｜{m['quality_events']} 次有损｜真回取 {float(m['quality_gap'] or 0)*100:.1f}%"
+              f"（基线 {float(m['quality_threshold'] or 0.1)*100:.0f}%）")
     if m.get("turns"):
         print(f"  任务成本  中位 ¥{m.get('turn_median_cny')} / P90 ¥{m.get('turn_p90_cny')}"
               f" / 共 ¥{m.get('cost_total_cny')}（{m.get('turns')} 轮）")
         print(f"  失败      {m.get('failed_turns')} 轮有失败调用，共 {fmt_int(m.get('failed_calls'))} 次")
     if errors:
         print("\n  缺数据：" + "，".join(f"{k}({v})" for k, v in errors.items()))
+
+    scores = score_components(data)
+    if scores:
+        print("\n  组件评分（阈值经验值）")
+        for name, g, detail, fix in scores:
+            print(f"    {name:<12} {g}  {detail:<20} → {fix}")
 
     print(f"\n动作（{len(actions)} 条，按收益排序）")
     for i, act in enumerate(actions, 1):

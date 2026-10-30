@@ -508,6 +508,27 @@ def main():
     check("失败工具归类", (fa.get("by_tool") or {}).get("ops_bash") == 1, str(fa.get("by_tool")))
     check("失败轮次被统计", fa.get("turns_with_failure") == 1, str(fa.get("turns_with_failure")))
 
+    # 10b. 失败轮次分母：纯注入段不算一轮，且必须与 turn_cost 同一判据
+    injhome = os.path.join(tmp, "injhome")
+    put_session(injhome, "session-inject", "injection_session.jsonl", tmp)
+    injcfg = os.path.join(tmp, "injcfg.yaml")
+    write_cfg(injcfg, injhome)
+    r = run("failure_analysis.py", "--config", injcfg, "--dsh-home", injhome, "--days", "1", "--json")
+    try:
+        inj = json.loads(r.stdout)
+    except Exception:
+        inj = {}
+    r = run("turn_cost.py", "--config", injcfg, "--dsh-home", injhome, "--days", "1", "--json")
+    try:
+        injt = json.loads(r.stdout).get("summary", {})
+    except Exception:
+        injt = {}
+    # fixture 里 3 条 user/message，其中 1 条只有 system-reminder：两脚本都应给出 2 轮
+    check("失败轮次分母剔除纯注入段", inj.get("turns") == 2, str(inj.get("turns")))
+    check("失败轮次分母与 turn_cost 一致", inj.get("turns") == injt.get("turns"),
+          f"{inj.get('turns')} vs {injt.get('turns')}")
+    check("有失败的轮次仍被统计", inj.get("turns_with_failure") == 1, str(inj.get("turns_with_failure")))
+
     # 11. 协议错误过滤
     put_session(home, "session-proto", "protocol_session.jsonl", tmp)
     r = run("failure_analysis.py", "--dsh-home", home, "--days", "1", "--protocol-only", "--json")
@@ -793,7 +814,8 @@ def main():
                       "failure_analysis.py", "guard_stats.py", "measure_modules.py",
                       "patch_snapshot.py", "preflight.py", "retry_patterns.py",
                       "schema_budget.py", "skill_usage.py", "turn_cost.py", "new_session.py",
-                      "install_guard.py", "install_account.py", "handoff.py", "setup.py", "install.py")
+                      "install_guard.py", "install_account.py", "handoff.py", "setup.py", "install.py",
+                      "quality_gate.py")
     tolerant_scripts = {"env_check.py", "doctor.py"}
     # 对账：凡是 argparse 里有 --config 的脚本都必须在上面
     declared = set()
@@ -1391,6 +1413,34 @@ def main():
     check("任务夹索引记两张卡且指向各自文件",
           {k: v.get("file") for k, v in ixd.get("cards", {}).items()}
           == {"ab12cd34": "00-card.md", "ef56gh78": "01-ef56gh78.md"}, str(ixd)[:240])
+
+    # 19c. 压缩质量闸门：只给有损压缩记分，回取 = notice 之后 read 回同一个 spill
+    qhome = os.path.join(tmp, "quality-home")
+    qsess = os.path.join(qhome, "sessions", "session-qual0001")
+    os.makedirs(qsess, exist_ok=True)
+    qdst = os.path.join(qsess, "session.v4.jsonl.zstd")
+    qd = {}
+    if compress(os.path.join(FIX, "quality_session.jsonl"), qdst):
+        rq = run("quality_gate.py", "--days", "3", "--json", "--dsh-home", qhome)
+        try:
+            qd = json.loads(rq.stdout)
+        except json.JSONDecodeError:
+            qd = {}
+    check("质量闸门：扫到 2 次有损压缩（无损不计）", qd.get("events") == 2, str(qd)[:220])
+    check("质量闸门：无损重编码单独计数", qd.get("lossless") == 1, str(qd.get("lossless")))
+    check("质量闸门：回取率 = 回取事件 / 有损事件", qd.get("retrieval_rate") == 0.5,
+          str(qd.get("retrieval_rate")))
+    check("质量闸门：原文已清时证据降级 notice-only", qd.get("evidence") == "notice-only",
+          str(qd.get("evidence")))
+    check("质量闸门：带 offset 的 read 记为真回取（gap）", qd.get("gap_rate") == 0.5,
+          str(qd.get("gap_rate")))
+    th = float(qd.get("threshold") or 0)
+    check("质量闸门：阈值由同批中位推出并夹在 5%–30%", 0.05 <= th <= 0.30, str(th))
+
+    sys.path.insert(0, SCRIPTS)
+    import quality_gate as qg
+    check("质量闸门：非路径引号不当 spill 路径",
+          qg.find_locator('xx read "},{" yy', 0) == "", qg.find_locator('xx read "},{" yy', 0))
 
     # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）

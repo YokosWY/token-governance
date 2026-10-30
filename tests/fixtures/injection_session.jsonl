@@ -1,0 +1,10 @@
+{"type":"session","version":4,"id":"session-fixture-injection","createdAt":0}
+{"type":"user/message","seq":1,"data":{"message":{"content":[{"type":"text","text":"真实用户轮一"}]}}}
+{"type":"assistant/message","seq":2,"data":{"usage":{"inputTokens":300,"cacheReadTokens":3000,"outputTokens":20}}}
+{"type":"tool/call","seq":3,"data":{"name":"read","arguments":"{\"file_path\":\"a.py\"}","callId":"r1"}}
+{"type":"tool/result","seq":4,"data":{"message":{"source":{"kind":"tool","callId":"r1"},"content":[{"type":"text","text":"ok"}]}}}
+{"type":"user/message","seq":5,"data":{"message":{"content":[{"type":"text","text":"<system-reminder>只有注入，没有任何模型动作</system-reminder>"}]}}}
+{"type":"user/message","seq":6,"data":{"message":{"content":[{"type":"text","text":"真实用户轮二"}]}}}
+{"type":"assistant/message","seq":7,"data":{"usage":{"inputTokens":400,"cacheReadTokens":4000,"outputTokens":30}}}
+{"type":"tool/call","seq":8,"data":{"callId":"e1","name":"edit","arguments":"{\"file_path\":\"b.py\"}"}}
+{"type":"tool/result","seq":9,"data":{"message":{"source":{"kind":"tool","callId":"e1"},"content":[{"type":"text","text":"Error: cannot edit \"b.py\": file has not been read — read the file, then retry"}]}}}

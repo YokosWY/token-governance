@@ -68,6 +68,10 @@ def signature(text):
     return pick[:100]
 
 
+def new_turn():
+    return {"inp": 0, "read": 0, "out": 0, "fail": 0, "steps": 0, "tools": 0}
+
+
 def analyze(path):
     """返回 (失败调用列表, 每轮成本, 每轮是否有失败)。"""
     events = []
@@ -93,31 +97,45 @@ def analyze(path):
 
     fails, turn = [], 0
     turn_cost_input, turn_failed = [], []
-    cur = {"inp": 0, "read": 0, "out": 0, "fail": 0}
+    cur = new_turn()
+
+    def close(seg):
+        """收一段，只有含 assistant 消息或 tool/call 的段才算一轮。
+
+        判据与 `turn_cost.turns_of` 必须是同一条：纯注入段（system-reminder /
+        runtime context / 时间戳）不是用户轮，算进分母会把失败率稀释掉一半
+        （2026-10-30 实测 1962 vs 950 轮，同一分子 386 就被读成 19.7% 与 40.6%）。
+        两处判据若再分叉，测试 `失败轮次分母与 turn_cost 一致` 会红。
+        """
+        if seg["steps"] or seg["tools"]:
+            turn_cost_input.append(seg)
+            turn_failed.append(seg["fail"] > 0)
+
     for o in events:
         t = o.get("type")
         d = o.get("data") or {}
         if t == "user/message":
             if turn:
-                turn_cost_input.append(cur)
-                turn_failed.append(cur["fail"] > 0)
+                close(cur)
             turn += 1
-            cur = {"inp": 0, "read": 0, "out": 0, "fail": 0}
+            cur = new_turn()
             continue
         if t == "assistant/message":
             u = d.get("usage") or {}
             cur["inp"] += u.get("inputTokens", 0) or 0
             cur["read"] += u.get("cacheReadTokens", 0) or 0
             cur["out"] += u.get("outputTokens", 0) or 0
-        elif t == "tool/result" and not t == "tool/call":
+            cur["steps"] += 1
+        elif t == "tool/call":
+            cur["tools"] += 1
+        elif t == "tool/result":
             msg = d.get("message") or {}
             cid = d.get("toolCallId") or (msg.get("source") or {}).get("callId")
             if cid and is_failure(results.get(cid, "")):
                 fails.append({"tool": calls.get(cid) or "?", "sig": signature(results.get(cid, "")), "turn": turn})
                 cur["fail"] += 1
     if turn:
-        turn_cost_input.append(cur)
-        turn_failed.append(cur["fail"] > 0)
+        close(cur)
     return fails, turn_cost_input, turn_failed
 
 
@@ -195,6 +213,10 @@ def main():
         "protocol_share": round(len(proto) / len(all_fails) * 100, 1) if all_fails else 0,
         "failed_call_cost": round(fail_cost, 2), "total_cost": round(total_cost, 2),
         "cost_share": round(fail_cost / total_cost * 100, 1) if total_cost else 0,
+        # 上面两个旧键名会被读成「失败调用本身烧掉的钱」，实际口径是「有失败的轮次的整轮花费」
+        # （含该轮全部正常步骤）。2026-10-30 曾被读成 63% 全是失败成本，故另给正名键。
+        "turns_with_failure_cost": round(fail_cost, 2),
+        "turns_with_failure_cost_share": round(fail_cost / total_cost * 100, 1) if total_cost else 0,
         "by_tool": dict(sorted(by_tool.items(), key=lambda kv: -kv[1])),
         "top_signatures": [{"tool": k[0], "sig": k[1], "n": v} for k, v in
                            sorted(by_sig.items(), key=lambda kv: -kv[1])[:a.top]],
@@ -205,10 +227,12 @@ def main():
         return
 
     print(f"失败重试分析（近 {a.days} 天，{len(files)} 个会话；价格 {src}）\n")
-    print(f"失败调用 {len(all_fails)} 次，落在 {fail_turns} 轮 / {len(sessions_with_fail)} 个会话（总 {all_turns} 轮）")
+    print(f"失败调用 {len(all_fails)} 次，落在 {fail_turns} 轮 / {len(sessions_with_fail)} 个会话"
+          f"（总 {all_turns} 轮；分母与 turn_cost 同一判据，纯注入段不计）")
     print(f"其中工具协议错误 {len(proto)} 次（占失败调用 {payload['protocol_share']}%）"
           + ("——本次只列这一类" if a.protocol_only else ""))
-    print(f"这些轮次花了 ¥{fail_cost:.2f}，占窗口总花费 ¥{total_cost:.2f} 的 {payload['cost_share']}%\n")
+    print(f"有失败的轮次总共花了 ¥{fail_cost:.2f}，占窗口总花费 ¥{total_cost:.2f} 的 "
+          f"{payload['turns_with_failure_cost_share']}%——这是「含失败的整轮花费」，不是失败本身的成本\n")
     print(f"{'工具':<18}{'失败次数':>8}")
     for k, v in list(payload["by_tool"].items())[:8]:
         print(f"{k:<18}{v:>8}")
