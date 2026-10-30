@@ -76,7 +76,7 @@ subagent(
 )
 ```
 
-- 本机 `subagent` 白名单只有 `deepseek-flash`（provider：`deepseek-official` / `deepseek-account`，见 `D:\AI\DSH-NEXT\profiles\desktop\cordis.patch.yml:43-51`）。同构批量**不要**显式指定模型，省略即继承，可避免白名单报错。
+- 本机 `subagent` 白名单只有 `deepseek-flash`（provider：`deepseek-official` / `deepseek-account`，见 `<DSH_HOME>\profiles\desktop\cordis.patch.yml:43-51`）。同构批量**不要**显式指定模型，省略即继承，可避免白名单报错。
 - 确需显式时：`provider="deepseek-official"` + `model="deepseek-flash"` 成对出现；`reasoning_effort` 可选，按适配器支持填（不支持就别填）。
 - 子代理不共享上下文：它看不到本会话历史，任务书必须自带 1–3k tokens 的背景。
 
