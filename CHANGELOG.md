@@ -18,11 +18,14 @@
 - 胶囊去本机化：删掉硬编码的 `TG_ROOT_DEFAULT`（旧值是作者本机仓库路径）与 `zstd` 本机路径，
   改成「没配就降级」（内置价、交接卡关掉，账目照算）；`cordis.patch.yml`、README、
   两个测试夹具里的本机路径同时清掉，`audit_pack` 的可移植性门禁覆盖到插件源码。
-- CI 新增 Node 22 + `node --test plugins/dsh-tg-account/tests/` 一步：插件 155 项与 Python 200 项
+- CI 新增 Node 22 + `node --test "plugins/dsh-tg-account/tests/*.test.mjs"` 一步：插件 155 项与 Python 203 项
   都是发布门禁。
-- 测试：`run_tests.py` 加 8 项安装器用例（dry-run 不写盘 / 装出插件与登记 / 复跑幂等 /
-  `--status` 认已装 / `--uninstall` 摘登记 / `--with-account` dry-run 与一条命令装齐），
-  总数 192 → 202；`data/counts.json`、README 徽章同步。
+- 交接卡的前置条件写进安装器：`install_account.py` 的 `--status`/`--apply` 现在检查 `memory_root`
+  （环境变量 / 仓库 `config.yaml`），缺了就直说「交接卡 / 切会话会生成失败」并给两条修复命令——
+  此前这个坑只出现在 `handoff.py` 的 stderr 里，面板上只表现成「交接卡生成失败」。
+- 测试：`run_tests.py` 加 9 项安装器用例（dry-run 不写盘 / 装出插件与登记 / 复跑幂等 /
+  `--status` 认已装 / `--uninstall` 摘登记 / `--with-account` dry-run 与一条命令装齐 /
+  `--status` 报出 memory_root 未配置），总数 192 → 203；`data/counts.json`、README 徽章同步。
 
 ## v1.3.0 — 2026-10-30（一条命令安装；预检不再静默、不再把已装的自己判成冲突）
 

@@ -21,6 +21,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -92,6 +93,33 @@ def node_major() -> int:
         return 0
 
 
+def memory_root_state(home: Path) -> tuple[str, str]:
+    """交接卡能不能用，取决于 memory_root。返回 (来源, 路径)；没有就 ("", "")。
+
+    handoff.py 不会自己猜目录（旧版静默落 ~/tg-memory 的兜底已删），没配就每次都以
+    「请先设置 memory_root」失败——胶囊面板上表现为「交接卡生成失败」，而且这个坑
+    只有 handoff.py 的 stderr 里写着，装的时候不提，新用户会以为插件坏了。
+    """
+    env = os.environ.get("TG_MEMORY_ROOT", "")
+    if env:
+        return "env", env
+    root = ""
+    try:
+        root = str(read_json(home / "_local" / "tg-account.json").get("root") or "")
+    except Exception:
+        root = ""
+    if not root:
+        return "", ""
+    cfg = Path(root.replace("/", os.sep)) / "config.yaml"
+    try:
+        txt = cfg.read_text(encoding="utf-8")
+    except Exception:
+        return "", ""
+    m = re.search(r"^\s*memory_root:\s*[\"']?([^\"'\r\n#]*)", txt, re.M)
+    val = m.group(1).strip() if m else ""
+    return ("config", val) if val else ("", "")
+
+
 def status(home: Path, profile: str) -> int:
     target = home / "local-plugins" / DIR_NAME
     pkg = home / "profiles" / profile / "package.json"
@@ -121,6 +149,8 @@ def status(home: Path, profile: str) -> int:
             print(f"root    : 读不了（{cfg_file}）")
     else:
         print("root    : 未配置（用内置价、交接卡关掉）")
+    src, mr = memory_root_state(home)
+    print(f"memory  : {('(' + src + ') ' + mr) if mr else '未配置（交接卡/切会话会生成失败）'}")
     return 0
 
 
@@ -204,6 +234,15 @@ def install(home: Path, profile: str, apply: bool) -> int:
     node_v = node_major()
     if node_v and node_v < 22:
         print(f"\n[warn] node v{node_v} < 22：胶囊要 node >= 22，升级后再重启。")
+
+    src, mr = memory_root_state(home)
+    if not mr:
+        print("\n[warn] 没找到 memory_root：交接卡 / 切会话 / 自动切换会「生成失败」，账目不受影响。")
+        print('       补一次（二选一），然后重启 DSH：')
+        print('         1) python scripts/setup.py --memory-root "<放对话夹的目录>"')
+        print('         2) 在仓库 config.yaml 里写 memory_root: "<路径>"（或设环境变量 TG_MEMORY_ROOT）')
+    else:
+        print(f"\n交接卡记忆根：({src}) {mr}")
 
     print("\n完成。重启 DSH 后生效（客户端 bundle 要重建）；验证：输入框旁出现账面胶囊，"
           "面板底部不再报「价表用内置默认」。")

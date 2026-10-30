@@ -62,6 +62,10 @@ python scripts/install_account.py --status            # 先看现状，不改任
 python scripts/install_account.py --apply             # 写入
 ```
 
+> 交接卡 / 一键切 / 自动切换还要 `memory_root`（写 `config.yaml`，或设环境变量 `TG_MEMORY_ROOT`）。
+> 仓库里没有 `config.yaml` 时先跑 `python scripts/setup.py`；缺这一项时 `--status` 会直说
+> 「未配置（交接卡/切会话会生成失败）」，面板上则只表现成「交接卡生成失败」。
+
 脚本做三件事（幂等，改前备份）：
 
 1. 复制 `plugins/dsh-tg-account/` 到 `<DSH_HOME>/local-plugins/dsh-tg-account/`（内容相同则跳过）；

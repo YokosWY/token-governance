@@ -9,7 +9,7 @@
 <img alt="version" src="https://img.shields.io/badge/version-v1.4.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-29-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-202-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-203-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -236,7 +236,7 @@ token-governance/
   scripts/                     # 29 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   plugins/dsh-tg-account/      # 账目胶囊插件源码（Node ≥ 22，自带 155 项断言）
-  tests/                       # 202 项断言 + fixtures
+  tests/                       # 203 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
@@ -252,7 +252,7 @@ token-governance/
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 202 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 203 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
@@ -368,7 +368,7 @@ python scripts/gen_metrics.py --write  # 改过 data/metrics.json 后同步文�
 
 | 版本 | 内容 |
 |---|---|
-| v1.4.0 | 账目胶囊并入：`plugins/dsh-tg-account/`（本会话/链/今日花费 + 交接卡 + 自动切换，Node ≥ 22，155 项 Node 断言）；`install_account.py` 幂等安装并写 `_local/tg-account.json`，`install.py --with-account` 一条命令连插件一起装；胶囊不再硬编码本机路径；测试 202 项 |
+| v1.4.0 | 账目胶囊并入：`plugins/dsh-tg-account/`（本会话/链/今日花费 + 交接卡 + 自动切换，Node ≥ 22，155 项 Node 断言）；`install_account.py` 幂等安装并写 `_local/tg-account.json`，`install.py --with-account` 一条命令连插件一起装；胶囊不再硬编码本机路径；测试 203 项 |
 | v1.3.0 | `install.py` 一条命令安装；预检修三处新用户阻塞（无会话时静默退出、装完误报 10 条同名技能、记忆根误报非空），`skills_dir` 自动回退 `<home>/skills`；`detect_home` 同时给两行；测试 192 项 |
 | v0.14.0 | 账本 v2：`ledger.py` 从会话日志派生日/模型/会话三级成本（幂等 + 文件级缓存），替代已卸载的 `dsh-cost-meter`；`tg_common` 补 3.14 内建 `compression.zstd` 与 `ledger_paths`；下游 `cost_summary`/`cache_audit`/`env_check` 兼容新旧账本；测试 132 项 |
 | v0.13.1 | 首次上手成门禁（`tests/first_run.py` + CI job）；`install_guard --config`；测试 126 项 |

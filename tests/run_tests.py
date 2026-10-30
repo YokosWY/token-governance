@@ -265,6 +265,19 @@ def main():
           and os.path.isfile(os.path.join(a_home, "_local", "tg-account.json")),
           (r.stdout + r.stderr)[:300])
 
+    # 5d3. 交接卡要 memory_root：root 指到没有 config.yaml 的目录时，--status 必须明说
+    #      「交接卡会生成失败」，而不是让人对着面板的「生成失败」猜。
+    fake_root = os.path.join(tmp, "empty-tg-root")
+    os.makedirs(fake_root, exist_ok=True)
+    with open(a_root, "w", encoding="utf-8") as f:
+        json.dump({"root": fake_root.replace(os.sep, "/")}, f)
+    r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--status")
+    check("install_account --status 报出 memory_root 未配置",
+          r.returncode == 0 and "memory  : 未配置" in (r.stdout or ""),
+          (r.stdout + r.stderr)[:240])
+    with open(a_root, "w", encoding="utf-8") as f:
+        json.dump({"root": str(ROOT).replace(os.sep, "/")}, f)
+
     # 5d2. 真新用户路径：新 clone、没有 config.yaml、零参数、只靠环境变量定位 home。
     #      它不走 --config / --dsh-home / --memory-root，与上面几条都不是同一段代码路径：
     #      config.yaml 要自己按 example 生成，skills_dir 要自己落到 <home>/skills。

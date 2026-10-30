@@ -117,7 +117,7 @@ token-governance/
   scripts/                     # 29 scripts: install / check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
   plugins/dsh-tg-account/      # inline bill capsule source (Node >= 22, 155 assertions)
-  tests/                       # 202 assertions + fixtures
+  tests/                       # 203 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate + Ubuntu/macOS compatibility matrix (also a gate)
 ```

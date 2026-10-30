@@ -2,6 +2,6 @@
   "version": "1.4.0",
   "scripts": 29,
   "skills": 10,
-  "tests": 202,
+  "tests": 203,
   "note": "README 徽章与正文计数的单一真相；改脚本/技能/测试数量必须同步这里，audit_pack 与测试套件都会核对。"
 }
