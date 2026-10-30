@@ -355,7 +355,7 @@ def main():
     #     放在「弄坏 config」的用例之前：它依赖这份安装是好的。
     nested = os.path.join(nb_home, "skills", "tg-isolate", "templates")
     shutil.rmtree(nested, ignore_errors=True)
-    open(nested, "w").write("占位")
+    open(nested, "w", encoding="utf-8").write("占位")
     r = nb_run()
     check("install.py 技能内文件写不进时判失败（不再「安装完成」）",
           r.returncode == 1 and ("复制失败" in r.stdout + r.stderr
@@ -395,7 +395,7 @@ def main():
     # (f) 写不进去（skills_dir 是已有文件）：rc=1 且说人话，不许 traceback
     #     这一条会把 clone 里的 skills_dir 改成那个文件，所以放在最后。
     afile = os.path.join(tmp, "blocker-file")
-    open(afile, "w").write("x")
+    open(afile, "w", encoding="utf-8").write("x")
     r = nb_run("--skills-dir", afile)
     check("install.py 写不进技能目录时给 rc=1 且无 traceback",
           r.returncode == 1 and "Traceback" not in (r.stdout + r.stderr),
