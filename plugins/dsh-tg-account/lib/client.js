@@ -1002,6 +1002,32 @@ window.__ModuleLoader__.load({
         .catch(function (e) { done(e || new Error("切换失败")); });
     }
 
+    /* 交接卡状态：面板里常显一行（2026-10-30 用户要求）。
+       以前「没有卡 + 宿主没判定该生成」时整块 return null——新用户只看到「什么都没有」，
+       分不清是没跑完一轮、还是 handoff.py/memory_root 没配。现在五种状态各自说清。 */
+    function cardState(card, ho, steps) {
+      if (card) return { tone: "ok", label: "交接卡 · " + (card.chars || 0) + " 字", tip: card.path };
+      if (!ho) return null;
+      if (ho.unavailable) {
+        return {
+          tone: "off", label: "交接卡：未配置 handoff.py", tip: ho.reason || "",
+          detail: "缺少 handoff.py：交接卡 / 切会话不可用，账目不受影响（见 _local/tg-account.json）",
+        };
+      }
+      if (ho.state === "running") return { tone: "wait", label: "交接卡生成中…", tip: ho.cmd || "" };
+      if (ho.state === "error") {
+        return {
+          tone: "warn", label: "交接卡生成失败", tip: ho.detail || ho.cmd || "",
+          detail: String(ho.detail || "").trim() || ("可手动执行：" + (ho.cmd || "")),
+        };
+      }
+      if (ho.state === "ok") return { tone: "wait", label: "交接卡已生成，路径未回传", tip: ho.cmd || "" };
+      if (!(typeof steps === "number" && steps > 0)) {
+        return { tone: "off", label: "交接卡：跑完一轮后生成", tip: "新会话还没有可交接的内容（至少跑完一步）" };
+      }
+      return { tone: "wait", label: "交接卡：等待生成", tip: ho.cmd || "" };
+    }
+
     function CardBlock(props) {
       var ho = props.handoff;
       var card = props.card;
@@ -1018,7 +1044,8 @@ window.__ModuleLoader__.load({
         };
       }, []);
       // hooks 必须在守卫之前：卡片会在轮询中从无到有，提前 return 会让 hook 数量变化。
-      if (!card && !(ho && ho.due)) return null;
+      var st = cardState(card, ho, props.steps);
+      if (!st) return null;
       function reset(ms) {
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(function () {
@@ -1053,15 +1080,7 @@ window.__ModuleLoader__.load({
           setSw("ok");
         });
       }
-      var label = card
-        ? "交接卡 · " + (card.chars || 0) + " 字"
-        : ho.state === "running"
-          ? "交接卡生成中"
-          : ho.state === "ok"
-            ? "交接卡已生成，路径未回传"
-            : ho.unavailable
-              ? "交接卡脚本未配置"
-              : "交接卡生成失败";
+      var label = st.label;
       var swText = swState === "busy" ? "切换中"
         : swState === "fail" ? "切换失败"
         : swState === "ok" ? "已切换"
@@ -1080,10 +1099,11 @@ window.__ModuleLoader__.load({
       return h("div", {
         style: {
           marginTop: "8px", padding: "6px 8px", borderRadius: "6px",
-          background: card ? "rgba(46,125,50,0.18)" : "rgba(255,255,255,0.06)",
+          background: st.tone === "ok" ? "rgba(46,125,50,0.18)"
+            : st.tone === "warn" ? "rgba(180,120,0,0.18)" : "rgba(255,255,255,0.06)",
           fontSize: "11px",
         },
-        title: card ? card.path : (ho && ho.cmd) || "",
+        title: st.tip || (card ? card.path : ""),
       },
         h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } },
           h("span", {
@@ -1105,12 +1125,9 @@ window.__ModuleLoader__.load({
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           },
         }, shortPath(card.path)) : null,
-        ho && ho.unavailable
-          ? h("div", { style: { marginTop: "2px", opacity: 0.65 } },
-              "缺少 handoff.py：交接卡 / 切会话不可用，账目不受影响（见 _local/tg-account.json）")
-          : ho && ho.state === "error"
-            ? h("div", { style: { marginTop: "2px", opacity: 0.65, wordBreak: "break-all" } }, "可手动执行：" + ho.cmd)
-            : null
+        st.detail
+          ? h("div", { style: { marginTop: "2px", opacity: 0.65, wordBreak: "break-all" } }, st.detail)
+          : null
       );
     }
 
@@ -1229,7 +1246,7 @@ window.__ModuleLoader__.load({
               "预算：单个子代理 ≤" + sbd.steps + " 步 / ≤" + fmtCny(sbd.cny) + "（`_local/tg-budget.json` 可改）")
           );
         })() : null),
-        h(CardBlock, { handoff: d.handoff, card: d.card, session: props.session, hot: d.shouldSplit }),
+        h(CardBlock, { handoff: d.handoff, card: d.card, session: props.session, hot: d.shouldSplit, steps: d.steps }),
         h("div", {
           style: {
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1582,6 +1599,7 @@ window.__ModuleLoader__.load({
         planOrder: planOrder,
         sid8Of: sid8Of,
         hueOf: hueOf,
+        cardState: cardState,
       },
     };
     return module.exports;

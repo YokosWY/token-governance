@@ -138,3 +138,32 @@ test("会话解析：都拿不到才退回 default（宿主再按最近写入猜
   const t = load({ fetchImpl: okFetch(card), services: {} });
   assert.equal(t.resolveSession({}), "default");
 });
+
+test("交接卡状态：没卡也常显，不再整块消失（2026-10-30 用户要求）", () => {
+  const t = load({ fetchImpl: okFetch(card) });
+  /* 1. 空会话：跑完一轮才有可交接的内容 */
+  const s0 = t.cardState(null, { due: false, cmd: "python handoff.py" }, 0);
+  assert.equal(s0.label, "交接卡：跑完一轮后生成");
+  assert.equal(s0.tone, "off");
+  /* 2. 跑过步但还没到宿主判定：给「等待生成」而不是空白 */
+  const s1 = t.cardState(null, { due: true, cmd: "python handoff.py" }, 3);
+  assert.equal(s1.label, "交接卡：等待生成");
+  /* 3. handoff.py 缺失：说明为什么不可用，且给原因 */
+  const s2 = t.cardState(null, { due: false, unavailable: true, reason: "未找到 handoff.py：D:/x" }, 3);
+  assert.match(s2.label, /未配置 handoff\.py/);
+  assert.match(s2.detail, /缺少 handoff\.py/);
+  assert.match(s2.tip, /未找到 handoff\.py/);
+  /* 4. 生成失败：把 handoff.py 的原话或可手动执行的命令摆出来 */
+  const s3 = t.cardState(null, { due: true, state: "error", detail: "请先设置 memory_root", cmd: "python x.py" }, 3);
+  assert.equal(s3.label, "交接卡生成失败");
+  assert.match(s3.detail, /memory_root/);
+  /* 5. 生成中 / 已生成但路径没回传 */
+  assert.equal(t.cardState(null, { due: true, state: "running" }, 3).label, "交接卡生成中…");
+  assert.equal(t.cardState(null, { due: true, state: "ok" }, 3).label, "交接卡已生成，路径未回传");
+  /* 6. 有卡：字数与路径 */
+  const s6 = t.cardState(card, { due: true, state: "ok" }, 3);
+  assert.equal(s6.label, "交接卡 · 1200 字");
+  assert.equal(s6.tip, card.path);
+  /* 7. 宿主连 handoff 字段都没给（老宿主）：不渲染，别凭空造状态 */
+  assert.equal(t.cardState(null, null, 3), null);
+});
