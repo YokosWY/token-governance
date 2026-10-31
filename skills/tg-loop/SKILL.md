@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: tg-loop
 description: "TG 循环守卫。工具级认同工具同参数重复；思考级认读海/连败/步数预算（雷霆大思考）。命中按固定三处置：假设/已排除/阻塞点、派子代理复核、问用户三选一。含调参、安装与验证。"
 ---

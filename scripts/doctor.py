@@ -11,6 +11,7 @@ doctor 只做两件事：把已有脚本的 JSON 汇成一页结论；把能安�
   python scripts/doctor.py --json          # 结构化，给 CI / 别的脚本
   python scripts/doctor.py --apply         # 额外执行可回滚动作（拍快照 + 记基线）
   python scripts/doctor.py --print-actions # 只打印 --apply 会做什么，不执行
+  python scripts/doctor.py --gate          # 开场闸门：一行，超阈值退出码 1，没超不出声
 
 边界：
   - 不改 cordis.patch.yml，不动 preset，不删技能；这些要人裁决。
@@ -18,7 +19,7 @@ doctor 只做两件事：把已有脚本的 JSON 汇成一页结论；把能安�
 """
 import datetime, json, os, re, subprocess, sys
 
-from tg_common import utf8_stdio
+from tg_common import expand, load_config, utf8_stdio
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "scripts")
@@ -55,7 +56,7 @@ def fmt_int(x):
         return "?"
 
 
-def collect(days, dsh_home="", config=""):
+def collect(days, dsh_home="", config="", only=None):
     """各采集器返回 (数据, 错误)。错误只提示，不让整页失败。
 
     --dsh-home / --config 透传给子脚本：整个体检看哪一份数据，必须一处指定、处处一致。
@@ -74,6 +75,8 @@ def collect(days, dsh_home="", config=""):
         ("turns", ("turn_cost.py", "--days", str(days), "--json", *passthru)),
         ("quality", ("quality_gate.py", "--days", str(days), "--json", *passthru)),
     ]
+    if only:
+        pairs = [p for p in pairs if p[0] in only]
     for key, argv in pairs:
         d, err = run_json(*argv)
         if d is None:
@@ -283,6 +286,83 @@ def score_components(data):
     return rows
 
 
+def gate_thresholds(config_path):
+    """开场闸门的阈值：读 config.budget.gate，缺省给保守值。"""
+    try:
+        cfg, base = load_config(config_path, strict=False)
+    except Exception:
+        cfg, base = {}, os.path.dirname(os.path.abspath(config_path or "."))
+    cfg = cfg if isinstance(cfg, dict) else {}
+    budget = cfg.get("budget") or {}
+    gate = budget.get("gate") or {}
+    return {
+        "schema_warn_kb": float(gate.get("schema_warn_kb")
+                                or cfg.get("schema_budget_kb")
+                                or budget.get("schema_budget_kb") or 120),
+        "visible_skills_max": int(gate.get("visible_skills_max") or 30),
+        "single_group_share": float(gate.get("single_group_share") or 0.25),
+        "skills_dir": expand(cfg.get("skills_dir") or "~/.dsh/skills", base),
+    }
+
+
+def count_visible_skills(skills_dir):
+    """(总技能数, 模型可见技能数)。可见 = SKILL.md 没写 disable-model-invocation。"""
+    total = visible = 0
+    if not skills_dir or not os.path.isdir(skills_dir):
+        return 0, 0
+    for name in sorted(os.listdir(skills_dir)):
+        path = os.path.join(skills_dir, name, "SKILL.md")
+        if not os.path.isfile(path):
+            continue
+        total += 1
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                head = f.read(2048)
+        except OSError:
+            continue
+        if "disable-model-invocation" not in head:
+            visible += 1
+    return total, visible
+
+
+def run_gate(a):
+    """--gate：一行结论，没问题就不出声。超阈值退出码 1，可直接进 CI / 开场检查。
+
+    只采集 schema / preflight / turns / skills 四项，比整页体检快；
+    阈值独立于 budget 的体检预算（体检预算 160 KB 是历史值，闸门按能动手的目标卡）。
+    """
+    th = gate_thresholds(a.config)
+    data, errors = collect(a.days, a.dsh_home, a.config,
+                           only={"schema", "preflight", "turns", "skills"})
+    sch = data.get("schema") or {}
+    kb = float(sch.get("schema_kb") or 0)
+    tools = sch.get("tools") or 0
+    groups = sch.get("groups") or []
+    total_bytes = sum(float(g.get("bytes") or 0) for g in groups) or 0
+    total_skills, visible = count_visible_skills(th["skills_dir"])
+
+    issues = []
+    if kb and kb > th["schema_warn_kb"]:
+        issues.append(f"schema {kb:.0f}KB 超 {th['schema_warn_kb']:.0f}")
+    if groups and total_bytes:
+        top = max(groups, key=lambda g: float(g.get("bytes") or 0))
+        share = float(top.get("bytes") or 0) / total_bytes
+        if share >= th["single_group_share"]:
+            issues.append(f"最大块 {top.get('group')} "
+                          f"{float(top.get('bytes') or 0) / 1024:.0f}KB 占 {share * 100:.0f}%")
+    if visible > th["visible_skills_max"]:
+        issues.append(f"可见技能 {visible} 超 {th['visible_skills_max']}")
+
+    if not issues:
+        return 0
+    print("TG 闸门｜" + "；".join(issues)
+          + f"｜工具 {tools}｜技能 {visible}/{total_skills}"
+          + "｜→ python scripts/doctor.py --json 看归因")
+    if errors:
+        print("  缺数据：" + "，".join(f"{k}({v})" for k, v in errors.items()))
+    return 1
+
+
 def main():
     safe_stdout()
     import argparse
@@ -294,7 +374,12 @@ def main():
                     help="透传给子脚本；不给则各子脚本按 config / 环境变量解析")
     ap.add_argument("--apply", action="store_true", help="执行可回滚动作（快照 + 基线）")
     ap.add_argument("--print-actions", action="store_true", help="只预览 --apply 会做什么")
+    ap.add_argument("--gate", action="store_true",
+                    help="开场闸门：只在一行里报超阈值项，没问题不出声；超了退出码 1")
     a = ap.parse_args()
+
+    if a.gate:
+        return run_gate(a)
 
     data, errors = collect(a.days, a.dsh_home, a.config)
     actions = build_actions(data)

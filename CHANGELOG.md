@@ -3,6 +3,18 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.6.0 — 2026-10-31（开场闸门：把「测出来」变成「每次都会看见」）
+
+`schema_budget --check` 早就能报 126 KB，但它只有人主动跑才响；体检预算又设在 160 KB，实测永远不触发。
+度量 → 动作这一环一直空着，工具清单三年没动。
+
+- **`doctor.py --gate`**：只采 schema / preflight / turns / skills 四项，输出一行，超阈值退出码 1，没超**完全不出声**（零噪声，可直接进 CI 或会话开场）。当前实测：`schema 126KB 超 120｜工具 144｜技能 34/271`。
+- **闸门阈值独立于体检预算**：新增 `config.budget.gate`（`schema_warn_kb` 120 / `visible_skills_max` 35 / `single_group_share` 0.25）。体检预算 160 KB 只负责「不冤枉」，闸门负责「该动手了」——两者混用等于没有闸门。
+- **可见技能口径不依赖日志**：直接数 `SKILL.md` 里有没有 `disable-model-invocation`。日志只有 8 天，按日志数会漏；实测 271 目录 / 34 可见。
+- **顺带纠正三处口径偏差**：`tg-context` 的「133 会话」标注为 2026-10-25 快照并附复现命令；`tg-isolate` 的「近 30 天」改为按实际可用窗口取；README 同处加注。实测数据面是 235 会话 / 17 天，不是 30 天。
+- **两个 0 调用技能转隐藏**：`tg-loop`、`tg-orchestrate`（17 天各 0 次），`$DSH_HOME/skills` 可见条数 36 → 34。
+- 断言 216 → 218（闸门阈值读取 + 可见技能计数两条，纯函数，不起子进程）。
+
 ## v1.5.1 — 2026-10-30（失败率口径修正：分母与 turn_cost 对齐，1962 → 951 轮）
 
 `failure_analysis` 把 `system-reminder`、runtime context、时间戳这类**纯注入段**也当成用户轮，

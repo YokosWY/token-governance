@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.5.1-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.6.0-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-30-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-216-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-218-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -38,7 +38,7 @@
 - **静态前缀优先**——工具清单与技能目录是每步都发的固定开销，收益最稳。一个 200 k 窗口的样本里：工具清单 230–265 → 174 个、schema 284–312 → 154 kB，技能目录单条 42 → 9.6 kB。
 - **目录旁路池**——可发现不等于可调用。10 个技能只留 `tg-router` 常驻，其余标 `disable-model-invocation`，模型侧不可见，用 `read` 或 `/名字` 调；装再多也不增加每步固定开销。
 - **不改写历史**——缓存键是精确 token 前缀。一次消息改写会让改写点之后的整段前缀按输入价重算，与缓存价相差 50 倍；因此事后裁剪阈值设到不触发，体积在写入时处理（工具输出落盘）。
-- **工具输出在入口瘦一次**——`dsh-tg-account` 的 `tools/post-execute` 钩子只在新结果进上下文的那一刻改写：结构感知窗口（表格带原始行号采样）、重复行折叠、错误行强制保留，双门控（≤72% 且省 ≥500 B 且 token 严格下降）不过就放行，原文先落盘、notice 里带路径供 `read` 取回。不注册新工具，零常驻 schema。本机 133 会话实测：198 次压缩、省 1.33 MB、净省约 ¥1.9（≈ 同批花费 1.8%），属零钱，不是主力。
+- **工具输出在入口瘦一次**——`dsh-tg-account` 的 `tools/post-execute` 钩子只在新结果进上下文的那一刻改写：结构感知窗口（表格带原始行号采样）、重复行折叠、错误行强制保留，双门控（≤72% 且省 ≥500 B 且 token 严格下降）不过就放行，原文先落盘、notice 里带路径供 `read` 取回。不注册新工具，零常驻 schema。本机 133 会话实测（2026-10-25 快照；当前数据面 235 会话 / 17 天，引用前重跑确认）：198 次压缩、省 1.33 MB、净省约 ¥1.9（≈ 同批花费 1.8%），属零钱，不是主力。
 - **压缩只当安全阀**——压缩一次把整段前缀打回未命中，省的是缓存价、赔的是输入价；实测 729 步会话压缩 4 次，净收益接近零。阈值宁高勿低（0.8），只在接近窗口上限时触发。
 - **口径分三层**——单步 / 每轮（一条用户指令）/ 任务都能出数。`turn_cost.py` 按轮算钱并给中位、均值、P90，避免「每步变便宜」掩盖长尾。
 - **运行时防线**——循环守卫按「工具名 + 参数哈希」严格相等计次，第 2 / 4 / 6 次追加提醒；不阻断调用、不弹窗、不结束会话。参数预览默认关闭，避免密钥进上下文。

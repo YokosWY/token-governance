@@ -21,6 +21,11 @@ skills_dir: "~/.dsh/skills"
 budget:
   daily: null
   weekly: null
+  # 开场闸门（doctor.py --gate）：只报这几项，没超不出声；超了退出码 1，可直接进 CI
+  gate:
+    schema_warn_kb: 120        # 能动手的线，不是体检预算；2026-10-31 实测 126 KB
+    visible_skills_max: 35     # 模型可见技能条数上限（数的是没写 disable-model-invocation 的）
+    single_group_share: 0.25   # 单组占整个工具 schema 的份额上限
 
 # 工具 schema 预算（KB）：超了 preflight 与 schema_budget --check 会报出来
 # 参考值：单机 142 个工具 / 122.7 KB（2026-10-25 实测）；新装一个大 MCP 常一次涨 20–50 KB。0 = 关闭检查

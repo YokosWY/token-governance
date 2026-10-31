@@ -1442,7 +1442,24 @@ def main():
     check("质量闸门：非路径引号不当 spill 路径",
           qg.find_locator('xx read "},{" yy', 0) == "", qg.find_locator('xx read "},{" yy', 0))
 
-    # 20. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
+    # 20. 开场闸门：阈值读取与可见技能计数（纯函数，不起子进程）
+    import doctor as dr
+    th_ex = dr.gate_thresholds(os.path.join(ROOT, "config.example.yaml"))
+    check("闸门：阈值来自 config 的 budget.gate 段",
+          th_ex["schema_warn_kb"] == 120 and th_ex["visible_skills_max"] == 35,
+          str(th_ex))
+    gate_dir = os.path.join(tmp, "gate_skills")
+    for name, hidden in (("a", False), ("b", True), ("c", False)):
+        d = os.path.join(gate_dir, name)
+        os.makedirs(d)
+        with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\ndescription: x\n%s---\n"
+                    % ("disable-model-invocation: true\n" if hidden else ""))
+    tot, vis = dr.count_visible_skills(gate_dir)
+    check("闸门：可见技能只数没写 disable-model-invocation 的",
+          (tot, vis) == (3, 2), f"{(tot, vis)}")
+
+    # 21. 计数单一真相：脚本数与本文件断言数必须与 data/counts.json 同步
     # （这两项必须放在最后：下面一条把「本文件总条数」与 counts.json 对比，漏改就红）
     with open(os.path.join(ROOT, "data", "counts.json"), encoding="utf-8") as f:
         counts = json.load(f)

@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: tg-orchestrate
 description: "tg 子技能 · 委派分档：主会话 High、难活派 Max 子代理、产出必须 Max 审验。派活、要质量兜底时用。"
 ---
