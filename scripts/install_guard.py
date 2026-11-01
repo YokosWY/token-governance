@@ -29,9 +29,16 @@ from tg_common import config_base, load_config, resolve_dsh_home, utf8_stdio
 utf8_stdio()
 
 REPO = Path(__file__).resolve().parent.parent
-SRC = REPO / "plugins" / "dsh-loop-guard"
+# 2026-11-01：独立版归档，正本合并进 dsh-guard 仓库 plugin/（dsh-guard-ui ≥ 0.3.0）。
+# 源目录指向归档，本脚本只为老机器卸载/对账保留。
+SRC = REPO / "plugins" / "_archive" / "dsh-loop-guard-0.2.0"
 PLUGIN_NAME = "@local/dsh-loop-guard"
 DIR_NAME = "dsh-loop-guard"
+
+DEPRECATED_NOTE = (
+    "[已归档] 循环守卫的正本是 dsh-guard 仓库的 plugin/（包名 dsh-guard-ui ≥ 0.3.0，单包双功能）。\n"
+    "         本脚本只为老机器执行 --uninstall 或对账已装副本保留。"
+)
 
 
 def pick_home(explicit: str | None, config_path: str | None = None) -> Path:
@@ -62,6 +69,7 @@ def write_json(path: Path, data: dict) -> None:
 def status(home: Path, profile: str) -> int:
     target = home / "local-plugins" / DIR_NAME
     pkg = home / "profiles" / profile / "package.json"
+    print(DEPRECATED_NOTE)
     print(f"home    : {home}")
     print(f"plugin  : {target} -> {'已存在' if target.exists() else '不存在'}")
     if target.exists() and (target / 'index.js').exists():
@@ -88,6 +96,7 @@ def install(home: Path, profile: str, apply: bool) -> int:
         return 1
 
     print(f"home={home} profile={profile}")
+    print(DEPRECATED_NOTE)
     print(f"1) 复制 {SRC} -> {target}")
     # 逐文件比对：只比 index.js 会让 README / patch 的改动永远同步不过去
     same = target.exists() and all(

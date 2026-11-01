@@ -10,7 +10,8 @@ import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.dirname(here)
-const vendored = path.join(repo, 'plugins', 'dsh-loop-guard', 'index.js')
+// 2026-11-01 归档：验证对象是留档的独立版 0.2.0；正本已合并进 dsh-guard 仓库 plugin/。
+const vendored = path.join(repo, 'plugins', '_archive', 'dsh-loop-guard-0.2.0', 'index.js')
 
 // 上游副本：装在 DSH home 的 local-plugins 里，用来确认仓库这份没跑偏。
 // 不能写死本机路径——换一台机器它就永远不存在，于是这段比对静默变成「跳过」，
@@ -37,7 +38,7 @@ function findUpstream() {
 }
 const upstream = findUpstream()
 
-const { apply } = await import(new URL('../plugins/dsh-loop-guard/index.js', import.meta.url))
+const { apply } = await import(new URL('../plugins/_archive/dsh-loop-guard-0.2.0/index.js', import.meta.url))
 
 // 命中日志写到临时目录：别污染真实 <DSH_HOME>/storages/loop-guard/events.jsonl
 const logDir = mkdtempSync(path.join(tmpdir(), 'guard-'))

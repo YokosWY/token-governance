@@ -64,7 +64,9 @@ v0.2 起运行时多一层「思考级空转」（随包默认开、阈值保守
 ### 7. 验证
 
 `scripts/verify_guard.mjs` 用假 ctx 跑六组断言：第 2 次触发、第 4 次触发、同阈值不重复、参数不同不触发、exclude 生效、新用户消息清链。
-`scripts/install_guard.py` 负责把 `plugins/dsh-loop-guard/` 装进 DSH home 并登记到 profile（幂等，带备份与卸载）。
+`scripts/install_guard.py` 负责把 `plugins/_archive/dsh-loop-guard-0.2.0/` 装进 DSH home 并登记到 profile（幂等，带备份与卸载）。
+
+> **2026-11-01 归档**：独立版循环守卫已合并进 dsh-guard 仓库的 `plugin/`（包名 `dsh-guard-ui` ≥ 0.3.0，单包双功能：护航按钮 + 循环守卫）。`plugins/dsh-loop-guard/` 现在只剩一个 README 路标，代码在 `plugins/_archive/dsh-loop-guard-0.2.0/`；上面两个脚本保留只为老机器卸载/对账。改守卫逻辑请去 dsh-guard 那边改。
 
 ### 8. 版本
 
