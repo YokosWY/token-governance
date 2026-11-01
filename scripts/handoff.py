@@ -180,6 +180,8 @@ def analyze(path, prices, rate):
     in_tok = read_tok = out_tok = 0
     first = last = 0
     users, notes, title = [], [], ""
+    # 原文另存：`users` / `notes` 是压平后给卡片用的，「收尾原文」sidecar 要保留换行与列表
+    users_raw, notes_raw = [], []
     for line in raw.split(b"\n"):
         if not line.strip():
             continue
@@ -203,10 +205,14 @@ def analyze(path, prices, rate):
                     flat = squash(body)
                     if flat:
                         users.append(flat)
+                        users_raw.append(str(body).strip())
         elif t == "assistant/message":
-            note = clean_note(blocks_text((d.get("message") or {}).get("content")))
+            body = blocks_text((d.get("message") or {}).get("content"))
+            note = clean_note(body)
             if note:
                 notes.append(note)
+            if body.strip():
+                notes_raw.append(body.strip())
             u = d.get("usage") or {}
             i = u.get("inputTokens", 0) or 0
             c = u.get("cacheReadTokens", 0) or 0
@@ -260,7 +266,57 @@ def analyze(path, prices, rate):
         "rebuild_cny": rebuild_cny, "net100": net100,
         "edits": edits, "snippet": trim_snippet(snip), "has_code": has_code,
         "goal": goal, "recent": recent, "last_note": note,
+        "tail": build_tail(users_raw, notes_raw),
     }
+
+
+TAIL_USER = 2000
+TAIL_NOTE = 4000
+
+
+def clip_tail(text, limit):
+    t = str(text).replace("\r\n", "\n").strip()
+    if len(t) <= limit:
+        return t
+    return t[:limit].rstrip() + "\n…（已截断）"
+
+
+def build_tail(users_raw, notes_raw):
+    """切会话时最后的完整上下文。卡里只留一行指针，原文进 sidecar：
+    「最后一句」按 160 字压平时，未完成项往往正好断在字外，接手者只能回去读原对话。"""
+    out = {}
+    if users_raw:
+        out["user"] = clip_tail(users_raw[-1], TAIL_USER)
+    if notes_raw:
+        out["note"] = clip_tail(notes_raw[-1], TAIL_NOTE)
+    return out
+
+
+def tail_text(meta, tail):
+    parts = [
+        f"# 收尾原文 · 会话 {meta['session']} · {meta['when']}",
+        "",
+        "> 交接卡里的「最后一句」只保留 160 字，这里是切会话时的完整上下文。",
+        "> 卡里的信息不够用时才读本文件；读完不必回写。",
+        "",
+    ]
+    u = tail.get("user") or ""
+    n = tail.get("note") or ""
+    if u:
+        parts += [f"## 最后一条真人指令（{len(u)} 字）", "", u, ""]
+    if n:
+        parts += [f"## 最后一条助手回复（{len(n)} 字）", "", n, ""]
+    return "\n".join(parts)
+
+
+def card_body(text):
+    """比对用：忽略 `>` 元信息行（时间戳会变），其余逐行相等才算同一张卡。"""
+    return [ln for ln in str(text).replace("\r\n", "\n").splitlines() if not ln.startswith(">")]
+
+
+def same_card(prev, new):
+    body = card_body(prev)
+    return bool(body) and body == card_body(new)
 
 
 def render(meta, m):
@@ -315,8 +371,12 @@ def render(meta, m):
     ]
     if m.get("recent"):
         lines.append(f"- 最近指令：{m['recent']}")
+    lines += [f"- 最后一句：{m.get('last_note') or '（无）'}"]
+    tail = m.get("tail") or {}
+    if meta.get("tail_name") and tail:
+        n = len(tail.get("user") or "") + len(tail.get("note") or "")
+        lines.append(f"- 收尾原文：{meta['tail_name']}（{n} 字，卡不够用时再读）")
     lines += [
-        f"- 最后一句：{m.get('last_note') or '（无）'}",
         "- 卡在哪：",
         "",
         "## 下一步",
@@ -493,7 +553,21 @@ def main():
 
     meta = {"name": name, "when": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "session": sid[:8], "task": task, "card": os.path.basename(card)}
+    tail = m.get("tail") or {}
+    # sidecar 与卡同名：01-<sid8>.md → 01-<sid8>-tail.md，避免任务夹里多会话互相盖尾页
+    tail_path = os.path.splitext(card)[0] + "-tail.md"
+    if tail and not a.print_only:
+        meta["tail_name"] = os.path.basename(tail_path)
     text = render(meta, m)
+    # 旧卡提示：会话没推进时重生成会产出与上卡逐行相同的正文，时间戳却更新，接手者会被骗
+    if os.path.isfile(card):
+        try:
+            with open(card, encoding="utf-8") as f:
+                if same_card(f.read(), text):
+                    text = (f"> ⚠ 与上卡正文相同（会话无新内容时重生成会这样）："
+                            f"接手续跑前先读 {meta.get('tail_name') or '原会话'}\n") + text
+        except OSError:
+            pass
     if a.print_only:
         print(text)
         return
@@ -506,6 +580,9 @@ def main():
         shutil.copy2(card, card + ".bak-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(card, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+    if tail:
+        with open(tail_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(tail_text(meta, tail))
     if task:
         update_index(folder, task, a.workspace, {
             "file": os.path.basename(card), "session": sid[:8],
@@ -514,6 +591,8 @@ def main():
             "n_star": m["n_star"], "ctx": m["ctx"],
         })
     print(f"交接卡：{card}")
+    if tail:
+        print(f"  收尾原文：{tail_path}（最后一条指令 + 最后一条回复，卡里只留指针）")
     print(f"  会话 {meta['session']} · {m['turns']} 轮 {m['steps']} 步 · ¥{m['cny']:.4f} · "
           f"上下文 {m['ctx']/1000:.0f}k · 回本 {m['n_star']} 步")
     if task:

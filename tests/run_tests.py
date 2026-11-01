@@ -1383,6 +1383,60 @@ def main():
     with open(keep_card, encoding="utf-8") as f:
         check("交接卡 --if-absent 不覆盖手写卡", f.read() == "手写卡\n")
 
+    # 19.5b 收尾原文 sidecar（2026-11-01）：卡里「最后一句」按 160 字压平，未完成项常断在字外，
+    # 原文必须另存一份，卡里只留一行指针；--print-only 仍是零副作用
+    tail_note = "先做完了 P0；" + "后面还有两句说明。" * 30 + "未完成项：P3 标签、P1 探针。"
+    tail_sess = "session-ta11ab12"
+    tail_dir_sess = os.path.join(home, "sessions", tail_sess)
+    os.makedirs(tail_dir_sess, exist_ok=True)
+    tail_src = os.path.join(tmp, "tail_session.jsonl")
+    with open(tail_src, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join([
+            '{"type":"session","data":{}}',
+            '{"type":"session/title","data":{"title":"尾页用例","source":{"kind":"provider"}}}',
+            '{"type":"user/message","data":{"role":"user","source":{"kind":"user"},'
+            '"content":[{"type":"text","text":"把没代价纯改良的做了"}]}}',
+            '{"type":"assistant/message","data":{"turn":1,"step":1,'
+            '"usage":{"inputTokens":1000,"cacheReadTokens":9000,"outputTokens":200},'
+            '"message":{"role":"assistant","content":[{"type":"text","text":'
+            + json.dumps(tail_note, ensure_ascii=False) + '}]}}}',
+            '{"type":"user/message","data":{"role":"user","source":{"kind":"user"},'
+            '"content":[{"type":"text","text":"继续"}]}}',
+        ]) + "\n")
+    check("尾页用例会话压缩成功",
+          compress(tail_src, os.path.join(tail_dir_sess, "session.v4.jsonl.zstd")))
+    tailmem = os.path.join(tmp, "tailmem")
+    r = run("handoff.py", "--session", "ta11ab12", "--slug", "tail", "--dsh-home", home,
+            "--config", prices, "--memory-root", tailmem)
+    tfolder = ""
+    tws = os.path.join(tailmem, "default-workspace")
+    if os.path.isdir(tws):
+        for nm in os.listdir(tws):
+            if nm.endswith("-tail"):
+                tfolder = os.path.join(tws, nm)
+    tcard = os.path.join(tfolder, "00-card.md") if tfolder else ""
+    ttail = os.path.join(tfolder, "00-card-tail.md") if tfolder else ""
+    tctext = open(tcard, encoding="utf-8").read() if os.path.isfile(tcard) else ""
+    ttext = open(ttail, encoding="utf-8").read() if os.path.isfile(ttail) else ""
+    check("交接卡落尾页，且含最后一条指令与回复原文",
+          os.path.isfile(ttail) and "## 最后一条真人指令" in ttext and "## 最后一条助手回复" in ttext
+          and "未完成项：P3 标签、P1 探针。" in ttext, (r.stdout + r.stderr)[-300:])
+    pointer = [ln for ln in tctext.splitlines() if ln.startswith("- 收尾原文：")]
+    check("卡里只留一行尾页指针且 ≤60 字",
+          len(pointer) == 1 and len(pointer[0]) <= 60 and "00-card-tail.md" in pointer[0],
+          str(pointer)[:200])
+    note_sec = ttext.split("## 最后一条助手回复", 1)[-1]
+    check("卡里「最后一句」仍按 160 字压平（原文靠尾页，不塞进卡）",
+          "未完成项：" not in tctext and len(note_sec) > 200,
+          f"卡含标记={'未完成项：' in tctext} 尾页回复节={len(note_sec)}")
+    empty_mem = os.path.join(tmp, "tailmem-empty")
+    run("handoff.py", "--session", "ta11ab12", "--slug", "tail2", "--dsh-home", home,
+        "--config", prices, "--memory-root", empty_mem, "--print-only")
+    left = []
+    for base, _dirs, files in os.walk(empty_mem):
+        left += files
+    check("交接卡 --print-only 不落盘（含尾页）", left == [], str(left)[:200])
+
     # 19.6 卡绑任务夹（2026-10-25）：同任务多会话各有各的卡，主卡不被覆盖
     tmem = os.path.join(tmp, "tmem")
     tfile = os.path.join(tmp, "tg-current-task.json")
