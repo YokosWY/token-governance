@@ -1470,11 +1470,10 @@ def main():
 
     # 19c. 压缩质量闸门：只给有损压缩记分，回取 = notice 之后 read 回同一个 spill
     qhome = os.path.join(tmp, "quality-home")
-    qsess = os.path.join(qhome, "sessions", "session-qual0001")
-    os.makedirs(qsess, exist_ok=True)
-    qdst = os.path.join(qsess, "session.v4.jsonl.zstd")
     qd = {}
-    if compress(os.path.join(FIX, "quality_session.jsonl"), qdst):
+    # 必须走 put_session：它把落盘文件的 mtime 归零到现在。裸 compress 会继承 fixture 的
+    # 2026-10-22 mtime，`--days 3` 的窗口会随日历把整个用例筛掉（2026-11-05 起 5 条断言全红）。
+    if put_session(qhome, "session-qual0001", "quality_session.jsonl", tmp):
         rq = run("quality_gate.py", "--days", "3", "--json", "--dsh-home", qhome)
         try:
             qd = json.loads(rq.stdout)
