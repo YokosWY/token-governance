@@ -84,6 +84,9 @@ description: "tg 子技能 · 高费低频工具隔离：测量→判定→生�
 5. 切 preset 只影响**新会话**；当前会话不会热切换
 6. 两套 DSH 各改各的 patch，别把官方 home 路径写进 NEXT
 7. GUI 类工具另有交接协议（见 `tg-gui`）；本技能只管"隔离"，不管"怎么点"
+8. **新增 preset 必须包在 `- insert: [ … ]` 里**（2026-11-04 实测）：补丁层直接写一个 `- id: preset-rea` 顶层条目不会报错，
+   但启动日志会打 `patch: entry "preset-rea" not found` 且该 preset 根本不出现——补丁只能寻址已有条目或 insert。
+   先例：`preset-gui` 也是这么加的。
 
 ## 分类速查
 

@@ -161,7 +161,9 @@ def price_book(cfg):
         if isinstance(w, (list, tuple)) and len(w) == 2:
             windows.append((int(w[0]), int(w[1])))
     peak = {"enabled": bool(pcfg.get("enabled", False)), "windows": windows,
-            "holidays": set(pcfg.get("holidays") or [])}
+            "holidays": set(pcfg.get("holidays") or []),
+            "since": str(pcfg.get("since") or ""),
+            "source": pcfg.get("source") or {}}
     book = {
         "schema": PRICES_SCHEMA,
         "models": models,
@@ -184,7 +186,8 @@ def price_fingerprint(book):
         "free": {k: book["free"][k] for k in ("models", "suffixes", "patterns")},
         "fx": book["fx"],
         "peak": {"enabled": book["peak"]["enabled"], "windows": book["peak"]["windows"],
-                 "holidays": sorted(book["peak"]["holidays"])},
+                 "holidays": sorted(book["peak"]["holidays"]),
+                 "since": book["peak"].get("since", "")},
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
@@ -239,8 +242,20 @@ def price_for(book, provider, model):
 
 
 def is_peak(peak_cfg, day, hour):
+    """官方口径（2026-11-04 核对 api-docs.deepseek.com/zh-cn/quick_start/pricing）：
+    高峰 = 北京时间周一至周五 09–12、14–18（UTC 01–04、06–10），法定节假日全天按空闲时段。
+    `day` 是本地日字符串，`hour` 是本地小时（半开区间）。
+    `since` 是方案生效日：早于该日的历史一律按空闲价（此前官方是固定价，无峰谷）。"""
     if not peak_cfg["enabled"] or day in peak_cfg["holidays"]:
         return False
+    since = str(peak_cfg.get("since") or "")
+    if since and str(day) < since:
+        return False  # 方案未生效的历史日
+    try:
+        if datetime.strptime(str(day), "%Y-%m-%d").weekday() >= 5:
+            return False  # 周末全天空闲
+    except ValueError:
+        pass
     return any(a <= hour < b for a, b in peak_cfg["windows"])
 
 
@@ -253,6 +268,10 @@ def iter_session_files(homes):
             continue
         for dirpath, _dirs, files in os.walk(root):
             for fn in files:
+                # .bak-* 是同一会话的快照副本（redact 前的原件、改 cwd 前的副本），
+                # 内容与现存日志重复；计入会把用量算两遍（2026-11-04 实测 861 次调用重复）。
+                if ".bak" in fn:
+                    continue
                 if fn.startswith("session.v4.jsonl"):
                     yield home, os.path.join(dirpath, fn)
 
@@ -812,6 +831,15 @@ def cmd_day(ledger, args):
     print(f"\n{'会话':<40}{'¥':>8}{'调用':>7}")
     for sid, v in sorted(d["sessions"].items(), key=lambda x: -x[1]["costCny"])[:15]:
         print(f"{sid:<40}{v['costCny']:>8.2f}{v['calls']:>7}")
+    # 未定价的 provider:model 记 ¥0 但不该静默（litellm 用 zero-cost 指标做同样的事）
+    def _tok(v):
+        return v["input"] + v["cacheRead"] + v["cacheWrite"] + v["output"]
+    unpriced = [(n, v) for n, v in d["byProviderModel"].items() if v["costCny"] == 0 and _tok(v) > 0]
+    if unpriced:
+        unpriced.sort(key=lambda x: -_tok(x[1]))
+        print(f"\n! 未定价 {len(unpriced)} 类（记 ¥0；补 config.yaml 的 ledger.prices 后重跑 ingest）")
+        for n, v in unpriced[:5]:
+            print(f"  {n}（{fmt_int(_tok(v))} tokens · {v['calls']} 次）")
 
 
 def cmd_verify(ledger, args):

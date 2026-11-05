@@ -153,14 +153,20 @@ def pick_session(dsh_home, session, days, limit=8, strict=True):
 
 
 def collect(path):
-    """读会话里第一条 request/header，返回 [(name, bytes)] 与步数；没有 header 返回 None。"""
+    """读会话里**最后一条** request/header，返回 [(name, bytes)] 与步数；没有 header 返回 None。
+
+    取最后一条而不是第一条：同一个会话可能跨重启换 preset（例如先按 preset-rea 起、
+    重启后回到常规 preset），第一条 header 反映的是历史工具集，会把 322 KB 这种
+    已经不在用的体量一直算在账上。2026-11-04 实测 session-5aff9127 首条 351 工具、
+    末条 146 工具，就是这种情形。
+    """
     events = mm.load_events(path)
     if not events:
         return None
     tools, steps = None, 0
     for o in events:
         t = o.get("type")
-        if t == "request/header" and tools is None:
+        if t == "request/header":
             tools = o["data"]["header"].get("tools") or []
         elif t == "assistant/message":
             steps += 1

@@ -331,6 +331,8 @@ function isPeakTime(book, ms) {
   const day = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0");
   if ((book.peak.holidays || []).indexOf(day) >= 0) return false;
+  const wd = d.getDay();
+  if (wd === 0 || wd === 6) return false; // 官方：周末全天空闲时段
   const h = d.getHours();
   return (book.peak.windows || []).some(function (w) { return h >= w[0] && h < w[1]; });
 }

@@ -24,6 +24,21 @@ utf8_stdio()
 DEFAULT_PRICES = {"input": 0.15, "cached": 0.003, "output": 0.6}
 DEFAULT_RATE = 7.1
 
+# 卡片正文是从会话里截的原话，可能带着上一次事故的描述（`password=…`、`api_key=sk-…`）。
+# 不遮蔽时 push_gate 会把整个收尾同步拦下来。规则与 AI-KB/tools/ingest_sessions.py REDACT 同步；
+# 边界用 (?<![A-Za-z0-9_]) 而不是 \b：会话文本里常出现字面 `\n`，前一字符是 n，\b 会失效。
+REDACT = [
+    (re.compile(r"sk-[A-Za-z0-9_\-]{12,}"), "sk-***"),
+    (re.compile(r"(?i)(?<![A-Za-z0-9_])(api[_-]?key|secret|token|password|passwd|authorization)\b\s*[:=]\s*[\"']?([^\s\"',;}]{6,})"), r"\1=***"),
+    (re.compile(r"(?i)(?<![A-Za-z0-9_])(cookie)\s*:\s*[^\n]{10,}"), r"\1: ***"),
+]
+
+
+def redact(text):
+    for pat, rep in REDACT:
+        text = pat.sub(rep, text)
+    return text
+
 
 def find_session(root, key):
     for dp, _, fs in os.walk(root):
@@ -306,7 +321,7 @@ def tail_text(meta, tail):
         parts += [f"## 最后一条真人指令（{len(u)} 字）", "", u, ""]
     if n:
         parts += [f"## 最后一条助手回复（{len(n)} 字）", "", n, ""]
-    return "\n".join(parts)
+    return redact("\n".join(parts))
 
 
 def card_body(text):
@@ -384,7 +399,7 @@ def render(meta, m):
         "1. ",
         "",
     ]
-    return "\n".join(lines)
+    return redact("\n".join(lines))
 
 
 TASK_INDEX = "99-cards.json"
