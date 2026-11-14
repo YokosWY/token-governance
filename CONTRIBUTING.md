@@ -39,7 +39,7 @@ fix: 修正 README 语句错误
 ## 提交前自查
 
 1. `python scripts/audit_pack.py`（包完整性）或 `python scripts/check_yaml.py <补丁>`（配置语法）。
-2. `python tests/run_tests.py`（225 项回归；Windows 为验收环境，CI 跑同一套命令）。
+2. `python tests/run_tests.py`（228 项回归；Windows 为验收环境，CI 跑同一套命令）。
 3. `git diff --stat` 确认改动范围；`git status` 确认没有把 `_local/`、`config.yaml` 带进来。
 4. 若改动了文档中的数据，同步更新 `CHANGELOG.md` 与相关 `docs/`。
 
@@ -60,11 +60,12 @@ fix: 修正 README 语句错误
 
 ## CI
 
-`.github/workflows/ci.yml` 有四个 job：
+`.github/workflows/ci.yml` 有五个 job：
 
 - `test (windows · 验收)`：合并门禁，跑测试与 `audit_pack`，红了不能合。
-- `matrix (ubuntu/macos · py3.10/3.12)`：兼容性门禁（2026-10-24 首轮全绿后转正）。
-- `first-run (windows)`：首次上手门禁，跑 `tests/first_run.py`（空 home 下 10 步）。
+- `matrix (py3.10–3.14 · ubuntu/macos)`：兼容性门禁（2026-10-24 首轮全绿后转正）。
+- `py314 (windows · 只装 pyyaml)`：Python 3.14 专项门禁，故意不装 `zstandard`。
+- `first-run (windows · 干净机器)`：首次上手门禁，跑 `tests/first_run.py`（空 home 下 10 步）。
 - `probe (linux · 不阻塞)`：只提前暴露路径与编码类问题，不阻塞合并。
 
 本机没有 GitHub 直连时（常见于内网/代理环境），用上面三步本地自查代替，不要为了过 CI 改断言。

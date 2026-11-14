@@ -117,7 +117,7 @@ token-governance/
   scripts/                     # 30 scripts: install / check-up / measure / attribute / configure / quality
   plugins/dsh-loop-guard/      # loop guard source
   plugins/dsh-tg-account/      # inline bill capsule source (Node >= 22, 155 assertions)
-  tests/                       # 225 assertions + fixtures
+  tests/                       # 228 assertions + fixtures
   docs/                        # 5 documents
   .github/workflows/ci.yml     # Windows gate + Ubuntu/macOS compatibility matrix (also a gate)
 ```
@@ -130,7 +130,7 @@ token-governance/
 ```bash
 python scripts/env_check.py           # Python / pyyaml / decompressor / node / dsh_home
 python scripts/audit_pack.py          # structure, references, stale words, number consistency
-python tests/run_tests.py             # 225 assertions, standard library (zstandard is used when the zstd binary is absent)
+python tests/run_tests.py             # 228 assertions, standard library (zstandard is used when the zstd binary is absent)
 python scripts/gen_metrics.py --check # tables must match data/metrics.json
 ```
 

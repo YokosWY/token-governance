@@ -9,7 +9,7 @@
 <img alt="version" src="https://img.shields.io/badge/version-v1.6.1-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-30-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-225-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-228-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -236,7 +236,7 @@ token-governance/
   scripts/                     # 30 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   plugins/dsh-tg-account/      # 账目胶囊插件源码（Node ≥ 22，自带 155 项断言）
-  tests/                       # 225 项断言 + fixtures
+  tests/                       # 228 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
@@ -252,14 +252,14 @@ token-governance/
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 225 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 228 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```
 
 都是只读，非零退出即失败。测试覆盖：解压回退（`zstd` / Python `zstandard` / 3.14 内建 `compression.zstd`）、账本 v2 派生与幂等、计价与手算一致、外来日志拒绝、换参与失败重试口径、协议错误单列、插件名漂移、首日基线可写可比、补丁快照回滚、schema 归因与预算档位、doctor 缺数据不崩、`dsh_home` 解析优先级与端到端（只给 config / 退回环境变量 / 开关可压）、15 个脚本 × 3 类配置故障注入（坏 YAML / 顶层非映射 / GBK）、缺依赖不抛 traceback、环境自检判定、BOM/空格/中文路径、10 项静态检查变异用例、文档数字一致、包自检。
 
-`.github/workflows/ci.yml` 有三个门禁：Windows 验收 job、Ubuntu/macOS × Python 3.10/3.12 兼容矩阵（2026-10-24 首轮全绿后转正）、首次上手 job（空 home 跑 10 步）；另有 Linux 全量测试探测，不阻塞。
+`.github/workflows/ci.yml` 有五个 job：Windows 验收 job、Ubuntu/macOS × Python 3.10–3.14 兼容矩阵（2026-10-24 首轮全绿后转正）、Python 3.14 专项 job（只装 pyyaml）、首次上手 job（空 home 跑 10 步）；另有 Linux 全量测试探测，不阻塞。
 
 `doctor --apply` 只执行两件可回滚的事：拍补丁快照、记首日基线。它不改 `cordis.patch.yml`、不删技能、不动 preset——这些要人裁决。
 
