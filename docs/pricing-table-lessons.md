@@ -9,7 +9,7 @@
 |---|---|---|
 | [litellm cost map](https://docs.litellm.ai/docs/proxy/model_cost_map) | 单个大 JSON，仓库内维护，启动时拉最新 | 全部 `USD per billable unit`；`cache_read_input_token_cost` / `cache_creation_input_token_cost` 与 input/output 平级；变体用后缀（`_above_200k_tokens`、`_batches`、`_priority`）；原币非 USD 时**只换一次并把汇率写进 `metadata.comment`**；未定价请求记 $0 并打 `litellm_zero_cost_requests_total` 指标 |
 | [models.dev](https://github.com/anomalyco/models.dev) | 每 provider/model 一个 TOML + 脚本生成 `api.json` | 数据在 git 里、按 provider 分文件、可 PR 审；`provider.toml` 的注释里写清文档 URL 与**访问日期**；对外给 JSON/SDK 快照 |
-| [llm-prices](https://github.com/simonw/llm-prices) | 每 vendor 一个 JSON，`scripts/build.py` 生成线上 JSON | 核心是 `price_history[]` + `from_date`/`to_date`（**左闭右开**、`null` = 无限）；`updated_at` 写在产物里 |
+| [llm-prices](https://github.com/simonw/llm-prices) | 每 vendor 一个 JSON，`llm-prices:scripts/build.py` 生成线上 JSON | 核心是 `price_history[]` + `from_date`/`to_date`（**左闭右开**、`null` = 无限）；`updated_at` 写在产物里 |
 | [ccusage](https://github.com/ryoppippi/ccusage) | 本地日志 → 报表 | 价格表不在运行时联网，**随包内置快照**，`just update-litellm-pricing` 显式刷新；cache read / creation 分列；`--json` 出机读结果 |
 | [dsh-client-pricing](https://github.com/Miyazawai/dsh-client-pricing) | DSH 顶栏插件 | 内置价表按官方文档人工核对；保留**生效前**的固定价表，三态徽标（未生效/高峰/空闲），30 秒重算一次 |
 
@@ -36,7 +36,7 @@
 | 3 | 未知模型默认报出并计数（ingest 末尾给一行 `未定价 N 个`，已有）→ 再给 `--strict` 到每日报表 | `ledger.py` | 低 |
 | 4 | CNY 作为展示主币种、USD 只做中间量；或反向：直接存人民币价、去掉 `fx` | `config.yaml` + `prices.py` | 中，动全量历史数字 |
 | 5 | 价表 diff 友好化：一个 provider 一个文件（抄 models.dev） | `config.yaml` 拆分 | 中，动加载路径 |
-| 6 | 价格变更走 `price_history` 而不是原地改 | 新增 `docs/price-history.json` | 低，但需要长期维护 |
+| 6 | 价格变更走 `price_history` 而不是原地改 | 新增 `price-history.json`（置于 docs/） | 低，但需要长期维护 |
 
 ## 4. 与 11-04 对账的关系（更正前一轮结论）
 

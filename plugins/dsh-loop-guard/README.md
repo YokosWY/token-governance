@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| 正本 | [`D:\AI\Projects\dsh-guard\plugin`](https://github.com/YokosWY/dsh-guard/tree/main/plugin) |
+| 正本 | [本机 dsh-guard 仓库的 plugin 目录](https://github.com/YokosWY/dsh-guard/tree/main/plugin) |
 | 包名 | `dsh-guard-ui`（0.3.0 起单包双功能：护航按钮 + 循环守卫） |
 | 旧版本代码 | 本仓库 `plugins/_archive/dsh-loop-guard-0.2.0/`（只读留档，不再同步） |
 | 本机安装 | 两套 DSH 都已切到 `dsh-guard-ui` 0.3.0，`@local/dsh-loop-guard` 已卸下 |

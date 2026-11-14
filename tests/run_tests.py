@@ -536,6 +536,9 @@ def main():
     check("失败调用被统计", fa.get("failed_calls") == 1, str(fa.get("failed_calls")))
     check("失败工具归类", (fa.get("by_tool") or {}).get("ops_bash") == 1, str(fa.get("by_tool")))
     check("失败轮次被统计", fa.get("turns_with_failure") == 1, str(fa.get("turns_with_failure")))
+    b = fa.get("buckets") or {}
+    check("三分桶键齐全", set(b) == {"protocol", "behavior", "command"}, str(b))
+    check("三分桶求和等于失败调用数", sum(b.values()) == fa.get("failed_calls"), str(b))
 
     # 10b. 失败轮次分母：纯注入段不算一轮，且必须与 turn_cost 同一判据
     injhome = os.path.join(tmp, "injhome")

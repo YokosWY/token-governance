@@ -3,6 +3,24 @@
 > 命名沿革：Tessera（拉丁语「凭证」）→ Metron（希腊语「度量」）→ **Token-Governance (TG)**。
 > 前两个因「不够直白 / 偏统计」弃用；正文已全部改为 TG，仅此处留档。
 
+## v1.6.1 — 2026-11-14（失败三桶：把「486 次失败」拆成能动手的三类）
+
+`failure_analysis` 原来只有一个失败数，而判据是输出里出现 `[exit code: N]`（`FAIL_EXIT`）——
+于是 grep 没匹配、git 报错这类**业务命令非零退出**全被算成失败，把「该改行为的失败」淹掉了。
+
+- 新增 `bucket_of()` 与 `BEHAVIOR` 常量，互斥三分：**protocol**（没读就改/文件已变更/未知工具）、
+  **behavior**（Traceback、`old_string was not found`、找不到命令）、**command**（命令非零，多为业务失败）。
+- payload 加 `buckets` / `behavior_share`，正文多打一行「三分桶 + 可改行为的占比」；既有键与 `--protocol-only` 行为不变。
+- 实测（7 天 / 98 会话 / 572 轮）：失败 496 次 = 协议 61 + 行为 61 + 命令非零 374，**可改行为只占 24.6%**。
+  结论：盯着总失败率没意义，盯 protocol + behavior 这两桶。
+- 断言 223 → 225（三分桶键齐全、求和等于 `failed_calls`）。
+- 顺手清掉三处 audit_pack 红灯：`docs/pricing-table-lessons.md` 两处外部/未来路径改成不触发引用的写法、
+  `plugins/dsh-loop-guard/README.md` 与 `skills/tg-memory/SKILL.md` 的本机绝对路径换占位符、README 徽章 tests 223 → 225。
+
+回滚：`git checkout -- scripts/failure_analysis.py tests/run_tests.py data/counts.json README.md CHANGELOG.md \
+    docs/pricing-table-lessons.md docs/failure-baseline-20261030.md skills/tg-memory/SKILL.md plugins/dsh-loop-guard/README.md \
+    skills/tg-router/docs/failure-baseline-20261030.md`
+
 ## v1.6.0 — 2026-10-31（开场闸门：把「测出来」变成「每次都会看见」）
 
 `schema_budget --check` 早就能报 126 KB，但它只有人主动跑才响；体检预算又设在 160 KB，实测永远不触发。

@@ -49,6 +49,23 @@ python scripts/turn_cost.py --days 7 --json
 - **自变量已换版**：`AGENTS.md` 于 **2026-11-04 18:00** 整版重写（两份副本 md5 `816626a7…` 仍一致），§1 第一条扩成「写前先读两分（新建 write / 改已有先 read 再 edit）+ 切目录用 `workdir` + 多行脚本落盘禁 heredoc」。因此 10-30→11-04 18:00 是旧红线，之后是新红线；**复测起点应改判为 11-04 18:00**，否则把两次干预算成一次。
 - `ops_bash` 非零退出校准（`tmp/fail_probe2.py`，排除 `[exit code: 0]`）：5 天 421 次 = Traceback 125 + exit1 217 + 其他退出 75 + grep/diff 预期非零 4（占 1%）。首词高频为 `cd` 99 次——正是 11-04 新红线「切目录用 `workdir`」针对的那一类；**不是逻辑错误暴涨，是旧写法的一次性存量**。
 
+## 复测（2026-11-11 21:45，距 11-04 换版满 7 天）
+
+**结论：有效，未达判据，需延长；但「切目录用 workdir」这条提示已被证伪。**
+
+| 桶（每千轮归一） | 基线 10-30 | 中期 11-04 | 复测 11-11 | 对中期 |
+|---|---|---|---|---|
+| 未读就改 | 189 | 152 | **118** | −22% |
+| 文件已变更 | 51 | 79 | **42** | −47% |
+| 工具名幻觉 | 41 | 24 | **17** | −29% |
+| old_string 未找到 | 3 | 3 | **15** | ↑ 新问题 |
+| 协议错误合计 | 284 | 257 | **183** | −29% |
+
+- 绝对量：协议错误 **213 次 / 1162 轮 / 196 会话**（7 天）。判据是 ≤150，**达成 79%**；按千轮折算的等价判据 158，仍差 14%。
+- `tier-plan` 文件族：未读就改 14 + 已变更 14（集中在 `tier-plan-20261104.md`，即 `q plan` 上线前那一小时起的存量），11-05 之后基本消失 → **`q plan` 那一招有效**。
+- **证伪**：`ops_bash/pwsh` 首词 `cd` 5 天 99 次 → 7 天 95 次（日均 20 → 19），红线「切目录用 `workdir`」**零执行**。提示对「写法习惯」这一类无效，与「写前先读」不同（后者是每个动作前的判断点，前者是肌肉记忆）。
+- 新增长项：`ops_bash` Traceback 77 次（多行脚本仍内联）、`old_string was not found` 17 次（改前没看原文就猜字符串）、`wsl` 35 次（pwsh 里跑 wsl 解析 localhost 失败）、`web_fetch` 18 次（AnySearch 上游错误，非行为问题）。
+
 ## 口径坑（别再踩）
 
 1. `failure_analysis` 旧版把 `system-reminder`、runtime context、时间戳当用户轮 → 分母虚高一倍（1962 vs 953），同一分子 386 被读成 19.7%。v1.5.1 已与 `turn_cost` 同判据，并有测试锁。
@@ -71,3 +88,10 @@ rm -f tests/fixtures/injection_session.jsonl
 cp "$DSH_HOME/AGENTS.md.bak-20261030-fail" "$DSH_HOME/AGENTS.md"
 cp ~/.dsh/AGENTS.md.bak-20261030-fail ~/.dsh/AGENTS.md
 ```
+
+## 2026-11-13 补记 · q run 上线 +「写不进 D 盘 AI 树」根因纠正
+
+- **`q run DIR CMD` 已落地**（`<SKILLS>\_tools\q.py` 的 `CMDS["run"]`）：单参数走 Git Bash 的 `bash -c`（保留管道 / `&&` / 重定向），多参数原样 argv 直 exec；`DIR` 不存在返 2，命令退出码透传，非零时打一行 `[q run exit N · 耗时 · cwd · 通道]`。system32 的 `bash.exe`（WSL）已排除，避免盘符路径被翻错。原文件快照 `default-workspace/tmp/q.py.orig-20261113`（317 行）。
+- **顺手修 `q gate` 中文乱码**：`capture_output=True, text=True` 走 locale（GBK）解码，改成 `encoding="utf-8"`。
+- **上一轮「`memory/4-经验` ACL 故障」结论作废**：ACL 无 DENY、owner 正常；而 `<TEMP>`、`<工作区父目录>` 根、`<SKILLS>\_tools`、`memory` 从 DSH 自带 bash 全部 `Permission denied`，**`pwsh` 与 `write`/`edit` 工具写同一目录却成功** ⇒ 不是文件系统权限，是 `ops_bash` 子进程跑在 workspace-write 级沙箱（仅 workspace 可写），`policy: danger-full-access` 没下传到 bash 通道。`icacls /grant` 那条修法无效，撤回。
+- 落地规则：**D 盘 AI 树内写操作只走 `pwsh` 或 `write`/`edit`；bash 只在 workspace 里写。**

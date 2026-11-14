@@ -29,6 +29,25 @@ PROTOCOL = (
 
 def is_protocol(sig):
     return any(k in sig for k in PROTOCOL)
+
+
+BEHAVIOR = (
+    "Traceback (most recent call last)",
+    "old_string was not found",
+    "找不到命令",
+    "command not found",
+)
+
+
+def bucket_of(sig):
+    """三桶：protocol=协议错（该改调用方式）/ behavior=句式与幻觉 / command=命令非零（多为业务失败）。"""
+    if is_protocol(sig):
+        return "protocol"
+    if any(k in sig for k in BEHAVIOR):
+        return "behavior"
+    return "command"
+
+
 DIGITS = re.compile(r"\d+")
 
 
@@ -200,6 +219,9 @@ def main():
             sessions_with_fail.add(sid)
 
     proto = [f for f in all_fails if is_protocol(f["sig"])]
+    buckets = {"protocol": 0, "behavior": 0, "command": 0}
+    for f in all_fails:
+        buckets[bucket_of(f["sig"])] += 1
     shown = proto if a.protocol_only else all_fails
     for f in shown:
         by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
@@ -211,6 +233,8 @@ def main():
         "failed_calls": len(all_fails),
         "protocol_failed_calls": len(proto),
         "protocol_share": round(len(proto) / len(all_fails) * 100, 1) if all_fails else 0,
+        "buckets": buckets,
+        "behavior_share": round((buckets["protocol"] + buckets["behavior"]) / len(all_fails) * 100, 1) if all_fails else 0,
         "failed_call_cost": round(fail_cost, 2), "total_cost": round(total_cost, 2),
         "cost_share": round(fail_cost / total_cost * 100, 1) if total_cost else 0,
         # 上面两个旧键名会被读成「失败调用本身烧掉的钱」，实际口径是「有失败的轮次的整轮花费」
@@ -231,6 +255,9 @@ def main():
           f"（总 {all_turns} 轮；分母与 turn_cost 同一判据，纯注入段不计）")
     print(f"其中工具协议错误 {len(proto)} 次（占失败调用 {payload['protocol_share']}%）"
           + ("——本次只列这一类" if a.protocol_only else ""))
+    print(f"三分桶：协议 {buckets['protocol']}（改调用方式）│ 行为 {buckets['behavior']}（句式/幻觉）"
+          f"│ 命令非零 {buckets['command']}（多为业务失败）"
+          f" → 可改行为的占 {payload['behavior_share']}%")
     print(f"有失败的轮次总共花了 ¥{fail_cost:.2f}，占窗口总花费 ¥{total_cost:.2f} 的 "
           f"{payload['turns_with_failure_cost_share']}%——这是「含失败的整轮花费」，不是失败本身的成本\n")
     print(f"{'工具':<18}{'失败次数':>8}")

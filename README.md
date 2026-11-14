@@ -6,10 +6,10 @@
 
 <img alt="license" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square">
 <img alt="ci" src="https://github.com/YokosWY/token-governance/actions/workflows/ci.yml/badge.svg">
-<img alt="version" src="https://img.shields.io/badge/version-v1.6.0-4b6fff?style=flat-square">
+<img alt="version" src="https://img.shields.io/badge/version-v1.6.1-4b6fff?style=flat-square">
 <img alt="skills" src="https://img.shields.io/badge/skills-10-9C2B23?style=flat-square">
 <img alt="scripts" src="https://img.shields.io/badge/scripts-30-6B6A66?style=flat-square">
-<img alt="tests" src="https://img.shields.io/badge/tests-223-2f6f4f?style=flat-square">
+<img alt="tests" src="https://img.shields.io/badge/tests-225-2f6f4f?style=flat-square">
 <img alt="status" src="https://img.shields.io/badge/status-stable-2f6f4f?style=flat-square">
 
 </div>
@@ -236,7 +236,7 @@ token-governance/
   scripts/                     # 30 个脚本：安装 / 体检 / 看账 / 拆账 / 改配置 / 守质量 / 公共层
   plugins/dsh-loop-guard/      # 循环守卫插件源码（含命中日志）
   plugins/dsh-tg-account/      # 账目胶囊插件源码（Node ≥ 22，自带 155 项断言）
-  tests/                       # 223 项断言 + fixtures
+  tests/                       # 225 项断言 + fixtures
   docs/                        # 6 篇：benchmark / principles / operations / concepts / adaptation / ledger-v2
   .github/workflows/ci.yml     # Windows 验收门禁 + Ubuntu/macOS 兼容矩阵（门禁）；Linux 探测不阻塞
 ```
@@ -252,7 +252,7 @@ token-governance/
 python scripts/env_check.py           # 环境：Python / pyyaml / 解压器 / node / dsh_home 可读性
 python tests/first_run.py             # 首次上手：空 home 下按安装段跑 10 步，只判「不崩 + 退出码」
 python scripts/audit_pack.py          # 结构 / 引用 / 旧词 / 数字一致性
-python tests/run_tests.py             # 223 项断言；只需 pyyaml + 解压器，不用 pytest
+python tests/run_tests.py             # 225 项断言；只需 pyyaml + 解压器，不用 pytest
 python scripts/gen_metrics.py --check # 文档表格必须与 data/metrics.json 一致
 python scripts/doctor.py              # 体检汇总：结论 + 2–4 条带预估的动作
 ```

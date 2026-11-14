@@ -38,6 +38,8 @@ ${memory_root}/<workspace>/<任务名>/
 会话归属哪个任务由指针 `_local/tg-current-task.json` 决定；没绑定的会话才退化成
 `<YYYYMMDD>-auto-<sid8>/00-card.md`（临时快照，不算交接）。
 
+**会话链**（2026-11-07 定）：同一任务的多个会话用 `<KB>\sessions\chain.py` 串链——收尾 `link --ws <ws> --sid <sid>`（省事 `auto --ws <ws>` 按会话文件 mtime 找最新），**开工先 `brief --ws <ws>`** 拿「链起点原话 + 每环目标 + 卡路径」，再按 1→N 读卡；`show` 是展开版。`inferred=true` 的父会话先跟用户确认再当事实。索引在 `sessions\_chains.json`（含每环 `goal`），**不写进 `00-card.md`**（胶囊覆盖写会冲掉）。
+
 脚手架：`python scripts/new_session.py <workspace> <id> "标题"`（若未提供，手建 6 个空文件即可）。
 
 ## 什么时候写（里程碑 + 4 触发器）
