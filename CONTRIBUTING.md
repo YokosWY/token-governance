@@ -49,6 +49,15 @@ fix: 修正 README 语句错误
 - 中文输出统一走 `tg_common.utf8_stdio()`，不在各脚本里重写 `reconfigure`。
 - 新增脚本要进 `audit_pack` 的交叉引用、README 组成表与测试；数量变化时同步 `README.md` 与 `README_EN.md`。
 
+## 自动化协作代理
+
+本仓库接了一个自动化协作者（GitHub 账号 `YokosWY-Agent`，dsh-superagent 原型），由维护者在 Issue / PR 评论里 `@YokosWY-Agent` 触发。它读仓库根的 `AGENTS.md`，并对自己的产出开 PR；自动合并关闭，所有 PR 走人工评审。
+
+- 它开的 PR 与人的 PR 同标准：CI 全绿、描述三段（改了什么 / 为什么 / 怎么验）、一条只做一件事。
+- 给它下任务时写清验收标准与禁区（例如「断言数不许变」）；边界写在 `AGENTS.md`，不必每次重复。
+- 部署、运维、故障处理见 `docs/superagent.md`。
+- 人评审它的 PR 时，按普通 PR 对待：不因为作者是代理就放宽，也不因为作者是代理就额外加要求。
+
 ## CI
 
 `.github/workflows/ci.yml` 有四个 job：
