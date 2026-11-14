@@ -133,6 +133,52 @@ def check(label, root, issues):
     return len(files)
 
 
+# 与断言数绑定的表述：README 的目录树与上手命令、CONTRIBUTING 的提交前自查、
+# CI 的回归步骤名。这些 N 必须等于 data/counts.json 的 tests。
+ASSERTION_COUNT_RE = re.compile(
+    r"(\d+)\s*(?:项断言|项回归|assertions?)|回归测试[（(]\s*(\d+)\s*项\s*[）)]")
+ASSERTION_COUNT_FILES = (
+    "README.md", "README_EN.md", "CONTRIBUTING.md", ".github/workflows/ci.yml",
+)
+
+
+def _is_python_test_count(line):
+    """这一行写的是不是 Python 回归套件的断言数。
+
+    两类「数字不等于 tests 却正确」的表述要排除：
+      1. 版本表行（`| v1.6.0 | ...`）：写的是当次发布的真值，属历史，不追改；
+      2. 账目胶囊的 155 项 Node 断言：另一套真值，由插件自己的测试守。
+    """
+    if re.match(r"\s*\|\s*v\d", line):
+        return False
+    low = line.lower()
+    return not re.search(r"\bnode\b", low) and "dsh-tg-account" not in low
+
+
+def check_assertion_counts(root, counts, issues):
+    """文档与 CI 里的断言数必须等于 counts["tests"]，漂了按「高」报。
+
+    与徽章检查同级：徽章在第一屏，正文与 CI step name 会被照着判断回归规模；
+    「中」不阻断 CI，等于没门禁。
+    """
+    try:
+        want = int(counts["tests"])
+    except (KeyError, TypeError, ValueError):
+        return
+    for rel in ASSERTION_COUNT_FILES:
+        p = os.path.join(root, *rel.split("/"))
+        if not os.path.isfile(p):
+            continue
+        for lineno, line in enumerate(read(p).splitlines(), 1):
+            if not _is_python_test_count(line):
+                continue
+            for m in ASSERTION_COUNT_RE.finditer(line):
+                got = m.group(1) or m.group(2)
+                if int(got) != want:
+                    issues.append(("TG", "高",
+                                   f"{rel}:{lineno} 断言数 {got} 与 data/counts.json tests={want} 不一致"))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -154,7 +200,8 @@ def main():
         n2 = check(os.path.basename(extra.rstrip("\\/")).upper(), extra, issues)
         print(f"{os.path.basename(extra)}: {extra}  （{n2} 个文件）")
 
-    # README 徽章 vs data/counts.json vs 实际目录 vs CHANGELOG 最新版本。
+    # README 徽章 vs data/counts.json vs 实际目录 vs CHANGELOG 最新版本；
+    # 文档与 CI 里的断言数也必须与 counts["tests"] 一致。
     # 这些一律算「高」：徽章是第一屏，漂了用户最先看到；「中」不阻断 CI，等于没门禁。
     counts_p = os.path.join(a.root, "data", "counts.json")
     rd = read(os.path.join(a.root, "README.md"))
@@ -193,6 +240,7 @@ def main():
             want = latest if key == "version" else str(counts.get(key, ""))
             if want and got.group(1) != want:
                 issues.append(("TG", "高", f"README 徽章 {key}={got.group(1)} 与真值 {want} 不一致"))
+        check_assertion_counts(a.root, counts, issues)
 
     # 数字单一真相：文档表格必须与 data/metrics.json 一致
     gm = os.path.join(a.root, "scripts", "gen_metrics.py")
