@@ -1214,6 +1214,47 @@ def main():
     check("徽章漂移让 audit_pack 非零退出", r.returncode == 1 and "tests" in r.stdout,
           (r.stdout or "")[-100:])
 
+    # CI job 名与门禁计数漂移必须阻断（issue #12）：「中」不阻断等于没门禁
+    ci_root = os.path.join(tmp, "ciproj")
+    os.makedirs(os.path.join(ci_root, ".github", "workflows"), exist_ok=True)
+    with open(os.path.join(ci_root, ".github", "workflows", "ci.yml"),
+              "w", encoding="utf-8") as f:
+        f.write(
+            "name: ci\n\non:\n  pull_request:\n\njobs:\n"
+            "  test:\n    name: test (windows · 验收)\n    runs-on: windows-latest\n"
+            "  matrix:\n    name: matrix (py${{ matrix.python }} · ${{ matrix.os }})\n"
+            "    runs-on: ${{ matrix.os }}\n"
+            "  py314-windows:\n    name: py314 (windows · 只装 pyyaml)\n"
+            "    runs-on: windows-latest\n"
+            "  probe:\n    name: probe (linux · 不阻塞)\n    runs-on: ubuntu-latest\n"
+            "  first-run:\n    name: first-run (windows · 干净机器)\n"
+            "    runs-on: windows-latest\n")
+    ci_doc = os.path.join(ci_root, "CONTRIBUTING.md")
+    ci_doc_text = (
+        "`.github/workflows/ci.yml` 有五个 job：\n\n"
+        "- `test (windows · 验收)`：验收门禁。\n"
+        "- `matrix (py3.10–3.14 · ubuntu/macos)`：兼容矩阵。\n"
+        "- `py314 (windows · 只装 pyyaml)`：3.14 专项。\n"
+        "- `first-run (windows · 干净机器)`：首次上手。\n"
+        "- `probe (linux · 不阻塞)`：不阻塞。\n")
+    with open(ci_doc, "w", encoding="utf-8") as f:
+        f.write(ci_doc_text)
+    r = run("audit_pack.py", "--root", ci_root)
+    check("CI job 名与计数正确时 audit_pack 通过", r.returncode == 0,
+          (r.stdout or "")[-120:])
+    with open(ci_doc, "w", encoding="utf-8") as f:
+        f.write(ci_doc_text.replace("test (windows · 验收)", "test (windows · 旧名)"))
+    r = run("audit_pack.py", "--root", ci_root)
+    check("CI job 名漂移让 audit_pack 非零退出",
+          r.returncode == 1 and "CONTRIBUTING.md:3" in r.stdout
+          and "旧名" in r.stdout and "高" in r.stdout, (r.stdout or "")[-160:])
+    with open(ci_doc, "w", encoding="utf-8") as f:
+        f.write(ci_doc_text.replace("五个 job", "四个 job"))
+    r = run("audit_pack.py", "--root", ci_root)
+    check("CI job 计数漂移让 audit_pack 非零退出",
+          r.returncode == 1 and "4 个 job" in r.stdout and "高" in r.stdout,
+          (r.stdout or "")[-160:])
+
     # 16. 数字单源
     r = run("gen_metrics.py", "--check")
     check("文档数字与 metrics.json 一致", r.returncode == 0)

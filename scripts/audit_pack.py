@@ -5,7 +5,7 @@
   python audit_pack.py                    # 只查本包（脚本所在项目）
   python audit_pack.py --also <另一项目>
 """
-import argparse, json, os, re, subprocess, sys
+import argparse, difflib, fnmatch, json, os, re, subprocess, sys
 
 from tg_common import utf8_stdio
 
@@ -179,6 +179,117 @@ def check_assertion_counts(root, counts, issues):
                                    f"{rel}:{lineno} 断言数 {got} 与 data/counts.json tests={want} 不一致"))
 
 
+# CI job 的显示名与门禁数量也被文档反复引用：文档写错一个显示名，读者会照着它
+# 去 CI 页面找不存在的 job。扫描面与断言数检查对齐（README / 英文 README /
+# CONTRIBUTING / docs/*.md），候选只认反引号包裹、形如 `jobname (…)` 的名字。
+CI_JOB_CANDIDATE_RE = re.compile(r"`([a-z][a-z0-9-]* \([^`)]*\))`")
+CI_JOB_COUNT_RE = re.compile(r"([0-9]+|[一二两三四五六七八九十]+)\s*个\s*(?:job|门禁)",
+                             re.IGNORECASE)
+CI_EXPR_RE = re.compile(r"\$\{\{[^}]*\}\}")
+CI_JOB_FILES = ("README.md", "README_EN.md", "CONTRIBUTING.md")
+
+_CN_DIGITS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+              "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _cn_number(s):
+    """把「五」「十二」「二十五」这类计数词转成整数；阿拉伯数字原样转。"""
+    if s.isdigit():
+        return int(s)
+    if "十" in s:
+        head, _, tail = s.partition("十")
+        tens = _CN_DIGITS.get(head, 1) if head else 1
+        ones = _CN_DIGITS.get(tail, 0) if tail else 0
+        return tens * 10 + ones
+    return _CN_DIGITS.get(s, 0)
+
+
+def _yaml_scalar(v):
+    """取 `name:` 的值：去掉引号与行尾注释（name 里不会出现 ` #`）。"""
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1]
+    return re.sub(r"\s+#.*$", "", v).strip()
+
+
+def parse_ci_jobs(root):
+    """从 .github/workflows/*.yml 读出 {job id: 显示名}。
+
+    只认顶层 `jobs:` 下两空格缩进的 job id、块内四空格缩进的 `name:`。
+    不展开 matrix：`${{ … }}` 原样保留，由 check_ci_jobs 归一成通配符。
+    刻意不依赖 pyyaml——缺 pyyaml 的机器上 audit_pack 也必须能跑完（测试会注入
+    ImportError）；仓库的 workflow 就这几种写法，行解析足够且行为可预测。
+    """
+    jobs = {}
+    wf_dir = os.path.join(root, ".github", "workflows")
+    if not os.path.isdir(wf_dir):
+        return jobs
+    for name in sorted(os.listdir(wf_dir)):
+        if not name.endswith((".yml", ".yaml")):
+            continue
+        in_jobs, cur = False, None
+        for line in read(os.path.join(wf_dir, name)).splitlines():
+            if re.match(r"^jobs:\s*(?:#.*)?$", line):
+                in_jobs, cur = True, None
+                continue
+            if not in_jobs:
+                continue
+            if line and not line[0].isspace():
+                break  # 回到顶层键，jobs 块结束
+            m = re.match(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$", line)
+            if m:
+                cur = m.group(1)
+                jobs[cur] = ""
+                continue
+            m = re.match(r"^    name:\s*(.+)$", line)
+            if m and cur:
+                jobs[cur] = _yaml_scalar(m.group(1))
+    return jobs
+
+
+def _job_template(name):
+    """`matrix (py${{ matrix.python }} · ${{ matrix.os }})` → `matrix (py* · *)`。"""
+    return CI_EXPR_RE.sub("*", name)
+
+
+def check_ci_jobs(root, issues):
+    """文档里的 CI job 名与「N 个 job/门禁」必须与 workflow 定义一致，漂了按「高」报。
+
+    「中」不阻断 CI，等于没门禁：文档说「四个 job」时读者会漏掉一条真实门禁。
+    """
+    jobs = parse_ci_jobs(root)
+    if not jobs:
+        return
+    templates = [_job_template(v or k) for k, v in jobs.items()]
+    docs = []
+    for rel in CI_JOB_FILES:
+        p = os.path.join(root, *rel.split("/"))
+        if os.path.isfile(p):
+            docs.append((rel, p))
+    docs_dir = os.path.join(root, "docs")
+    if os.path.isdir(docs_dir):
+        for name in sorted(os.listdir(docs_dir)):
+            p = os.path.join(docs_dir, name)
+            if name.endswith(".md") and os.path.isfile(p):
+                docs.append((f"docs/{name}", p))
+    for rel, p in docs:
+        for lineno, line in enumerate(read(p).splitlines(), 1):
+            for m in CI_JOB_CANDIDATE_RE.finditer(line):
+                cand = m.group(1)
+                if any(fnmatch.fnmatchcase(cand, t) for t in templates):
+                    continue
+                close = difflib.get_close_matches(cand, templates, n=1, cutoff=0)
+                hint = f"；最接近：'{close[0]}'" if close else ""
+                issues.append(("TG", "高",
+                               f"{rel}:{lineno} 文档写的 job 名 '{cand}' 匹配不上 workflow 真名{hint}"))
+            for m in CI_JOB_COUNT_RE.finditer(line):
+                got = _cn_number(m.group(1))
+                if got != len(jobs):
+                    issues.append(("TG", "高",
+                                   f"{rel}:{lineno} 写的 {got} 个 job/门禁，"
+                                   f"workflow 实际 {len(jobs)} 个 job"))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -241,6 +352,10 @@ def main():
             if want and got.group(1) != want:
                 issues.append(("TG", "高", f"README 徽章 {key}={got.group(1)} 与真值 {want} 不一致"))
         check_assertion_counts(a.root, counts, issues)
+
+    # CI job 名与门禁清单：文档里反引号写的 job 名、以及「N 个 job/门禁」的计数，
+    # 必须与 .github/workflows/*.yml 对得上；漂了按「高」报（中不阻断等于没门禁）。
+    check_ci_jobs(a.root, issues)
 
     # 数字单一真相：文档表格必须与 data/metrics.json 一致
     gm = os.path.join(a.root, "scripts", "gen_metrics.py")
