@@ -90,9 +90,28 @@ def write_cfg(path, home):
         f.write(f'dsh_home: "{h}"\nskills_dir: "{h}/skills"\n')
 
 
+def make_tmpdir():
+    """建仓库外的临时目录。
+
+    5d2 会把整个 ROOT 复制进 tmp：TMPDIR 指向仓库内部时，临时目录自己也会被
+    拷进去，无限递归到 RecursionError（issue #3）。检测到这种情况就用仓库父
+    目录；正常环境仍走系统临时目录。
+    """
+    repo = os.path.realpath(ROOT)
+    base = os.path.realpath(tempfile.gettempdir())
+    try:
+        inside = os.path.commonpath(
+            [os.path.normcase(repo), os.path.normcase(base)]) == os.path.normcase(repo)
+    except ValueError:  # Windows 跨盘符：不可能是仓库内部
+        inside = False
+    if inside:
+        base = os.path.dirname(repo)
+    return tempfile.mkdtemp(prefix="tg-test-", dir=base)
+
+
 def main():
     from datetime import datetime, timezone, timedelta  # 账本用例要构造确定的毫秒时间戳
-    tmp = tempfile.mkdtemp(prefix="tg-test-")
+    tmp = make_tmpdir()
     prices = os.path.join(tmp, "prices.yaml")
     with open(prices, "w", encoding="utf-8") as f:
         f.write("prices_usd_per_mtok:\n  input: 0.15\n  cached: 0.003\n  output: 0.6\nrate: 7.1\n")
@@ -283,7 +302,8 @@ def main():
     #      config.yaml 要自己按 example 生成，skills_dir 要自己落到 <home>/skills。
     clone = os.path.join(tmp, "newbie-clone")
     shutil.copytree(ROOT, clone, ignore=shutil.ignore_patterns(
-        ".git", "__pycache__", "*.pyc", "config.yaml", "_local", "_history", "*bak*"))
+        ".git", "__pycache__", "*.pyc", "config.yaml", "_local", "_history", "*bak*",
+        "tg-test-*"))  # 旧版崩溃残留的临时目录不拷（里面可能套着整仓副本）
     nb_home = os.path.join(tmp, "newbie-home")
     nb_mem = os.path.join(tmp, "newbie-memory")
     os.makedirs(os.path.join(nb_home, "sessions"), exist_ok=True)
