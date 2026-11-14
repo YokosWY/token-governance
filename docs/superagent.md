@@ -44,7 +44,7 @@
 wsl -d Ubuntu-24.04 -u root -- bash -lc 'cd /root/dsh-superagent && scripts/dsh-superagent status'
 ```
 
-九项 health（`runtime` / `relay` / `notice` / `launch` / `delivery` / `assessment` / `reply` / `evals` / `models` / `github`）应全 `ready`、`errors` 为空。
+十项 health（`runtime` / `relay` / `notice` / `launch` / `delivery` / `assessment` / `reply` / `evals` / `models` / `github`）应全 `ready`、`errors` 为空。
 
 起停：把 `status` 换成 `start` / `stop`。
 
