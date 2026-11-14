@@ -18,7 +18,7 @@
 
 ## 2. 怎么用它
 
-1. 开 Issue 写清要求，或在本仓库 Issue / PR 的评论里 `@YokosWY-Agent <要求>`。
+1. 在 Issue / PR 的**评论**里 `@YokosWY-Agent <要求>`。正文（issue 描述）里 @ 不触发：要求可以写在正文，但触发必须落在一条评论上（新开 Issue 后紧跟一条评论即可）。
 2. 它先回一条 ack，再干活；改代码的活会自己开 PR，PR 描述带「This is by an automated agent, not a human.」。
 3. 评审就按普通 PR 走：看 diff、看 CI、写 review comment。它会读 review 并按评论改，改完在 review thread 里回。
 4. 合并由人做（squash）。
@@ -58,6 +58,8 @@ wsl -d Ubuntu-24.04 -u root -- bash -lc 'cd /root/dsh-superagent && scripts/dsh-
 | 它不回话 | `status` 看 `github` 是否 `ready`；再看 `/root/dsh-superagent/.artifacts/*.log` 最新一份 |
 | WSL 内解析不到 GitHub | 手动跑一次 `keepalive.ps1`，看 log 里 `9/9 resolved` |
 | PR 卡在 CI | 先判定是产品问题还是平台用例问题，别为了过 CI 改断言 |
+| @ 了却不 ack | 先看 @ 是不是只写在 Issue **正文**里（正文不触发）；补一条评论再 @ 一次。仍不回再看 `status` 的 `github` |
+| ack 了但一直没动静 | 多半是 worker 的 prepare 拉仓库失败（网络 / TLS 抖动）。这种情况 **issue 里不会有任何报错、也不会自动重试**，ticket 会一直挂着；网络恢复后在评论里再 @ 一次即重跑 |
 
 ## 5. 已验证的一次端到端
 
