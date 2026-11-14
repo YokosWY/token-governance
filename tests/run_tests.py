@@ -35,6 +35,15 @@ def run(script, *args):
                           errors="replace", env=env)
 
 
+def points_at_repo(account_cfg):
+    """tg-account.json 的 root 是否指向本仓库根：按 realpath 认路径，不看目录名后缀。"""
+    try:
+        root = json.load(open(account_cfg, encoding="utf-8")).get("root") or ""
+    except (OSError, ValueError):
+        return False
+    return bool(root) and os.path.realpath(root) == os.path.realpath(ROOT)
+
+
 def compress(src, dst):
     """造 .zstd 夹具：与 tg_common 的通道顺序一致（命令 → 内建 → 模块）。
 
@@ -248,7 +257,7 @@ def main():
           and os.path.isfile(os.path.join(plug, "package.json"))
           and pkg_a["dependencies"].get("@local/dsh-tg-account", "").startswith("link:")
           and "@local/dsh-tg-account" in pkg_a["dsh"]["profile"]["bundles"]
-          and json.load(open(a_root, encoding="utf-8")).get("root", "").endswith("token-governance"),
+          and points_at_repo(a_root),
           (r.stdout + r.stderr)[:300])
     r = run("install_account.py", "--home", a_home, "--config", i_cfg, "--apply")
     check("install_account 可复跑（内容相同跳过、root 不重写）",
