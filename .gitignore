@@ -18,6 +18,8 @@ __pycache__/
 *.pyc
 reports/
 tmp/
+# tests/run_tests.py 的临时目录（TMPDIR 指向仓库内时可能残留在仓库根）
+tg-test-*/
 # ledger.py 派生出的本机账本与解析缓存（含会话 ID / 标题，不要提交）
 data/ledger.json
 data/ledger.json.cache.json
