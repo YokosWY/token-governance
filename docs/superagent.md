@@ -48,7 +48,7 @@ wsl -d Ubuntu-24.04 -u root -- bash -lc 'cd /root/dsh-superagent && scripts/dsh-
 
 起停：把 `status` 换成 `start` / `stop`。
 
-自愈：Windows 侧 `D:\AI\tools\superagent\keepalive.ps1` 由登录启动项 `dsh-superagent-keepalive.cmd` 和计划任务 `DSH-SuperAgent-Keepalive` 拉起，负责刷新 WSL 内 GitHub 域名解析（`/etc/hosts` 九个域名经代理走 DoH 现查）并确认服务存活。日志 `D:\AI\tools\superagent\keepalive.log`。
+自愈：Windows 侧有一个 `keepalive.ps1`（与 `keepalive.log` 同目录，本机路径不入库）由登录启动项 `dsh-superagent-keepalive.cmd` 和计划任务 `DSH-SuperAgent-Keepalive` 拉起，负责刷新 WSL 内 GitHub 域名解析（`/etc/hosts` 九个域名经代理走 DoH 现查）并确认服务存活。
 
 常见故障：
 
